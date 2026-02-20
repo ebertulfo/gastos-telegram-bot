@@ -47,3 +47,13 @@
 - Each implemented task must include happy-path tests.
 - Each implemented task must include idempotency and timezone-boundary tests where relevant.
 - Each implemented task must include clear acceptance notes in PR description.
+
+## Execution Discipline Rules
+
+- For non-trivial tasks, create an explicit plan with checkable steps before implementation.
+- If implementation fails or assumptions break, stop and re-plan before continuing.
+- Prefer elegant, low-complexity solutions over quick patches when scope is non-trivial.
+- Keep changes minimal: touch only files necessary to satisfy acceptance criteria safely.
+- Resolve bugs autonomously with direct evidence (failing tests, logs, repro), then verify fix with tests.
+- Never declare completion without proof from checks/tests relevant to the changed behavior.
+- After user corrections, log recurring mistakes and prevention rules in `docs/LESSONS.md`.

@@ -40,3 +40,8 @@ Stop and ask the Product Owner when:
 - A change conflicts with `tprd.md`.
 - A schema decision changes data model semantics.
 - A command response contract changes user-visible behavior.
+
+## Companion Skill
+
+- Pair with `codex-execution-discipline` for non-trivial changes so planning/re-planning/verification and lessons capture stay consistent across deliveries.
+

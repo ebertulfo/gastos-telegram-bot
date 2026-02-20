@@ -47,5 +47,8 @@ Record architecture/product decisions in `/Users/edrianbertulfo/Dev/gastos-teleg
 
 When working on this project, use:
 - `gastos-telegram-delivery`: `/Users/edrianbertulfo/Dev/gastos-telegram-bot/.agents/skills/gastos-telegram-delivery/SKILL.md`
+- `codex-execution-discipline`: `/Users/edrianbertulfo/Dev/gastos-telegram-bot/.agents/skills/codex-execution-discipline/SKILL.md`
 
-Trigger this skill for tasks involving webhook ingestion, queue parsing, D1 schema, totals commands, onboarding, or timezone logic.
+Trigger `gastos-telegram-delivery` for tasks involving webhook ingestion, queue parsing, D1 schema, totals commands, onboarding, or timezone logic.
+
+Trigger `codex-execution-discipline` for non-trivial implementation, bug-fixing, review, or process updates that require explicit planning, re-planning, rigorous verification, and lessons capture.

@@ -91,3 +91,12 @@ Use this file as a lightweight ADR log.
 - Context: Multimodal parsing must remain asynchronous and production-safe, even when AI credentials or media objects are unavailable.
 - Decision: Queue parser uses OpenAI audio transcription for voice and OpenAI vision extraction for photo when `OPENAI_API_KEY` and media are present, otherwise marks parse result as unprocessed.
 - Consequences: Bot remains resilient with explicit parse states; extraction quality improves automatically when AI is configured.
+
+## D-010
+
+- ID: `D-010`
+- Date: `2026-02-20`
+- Status: `accepted`
+- Context: Team requested adoption of useful CLAUDE-style workflow guardrails while keeping behavior compatible with Codex constraints and existing project governance.
+- Decision: Add Codex-aligned execution discipline defaults across workflow/rules, introduce a project lessons log, and provide a dedicated local skill for plan/re-plan/verification behavior.
+- Consequences: Delivery consistency and verification rigor improve; docs carry a small maintenance cost to keep lessons and checklist discipline current.

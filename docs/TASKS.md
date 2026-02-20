@@ -73,6 +73,7 @@ Status legend: `todo | in-progress | blocked | done`
 
 ## Operating Backlog
 
+- Adopt Codex-aligned execution discipline (plan/re-plan/verification/lessons loop) in docs + skills (`done`)
 - Define Cloudflare environment contract (`todo`)
 - Define parser versioning approach (`todo`)
 - Add observability and error telemetry (`todo`)
