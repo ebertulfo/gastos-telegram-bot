@@ -1,5 +1,5 @@
 import { getUserByTelegramUserId, setUserTimezone, updateUserOnboardingState, upsertUserForStart } from "./db/users";
-import { sendTelegramChatMessage } from "./telegram/messages";
+import { editTelegramMessageText, sendTelegramChatMessage, answerCallbackQuery } from "./telegram/messages";
 import { formatTotalsMessage, getTotalsForUserAndPeriod, parseTotalsPeriod } from "./totals";
 import type { Env, TelegramUpdate } from "./types";
 
@@ -36,13 +36,23 @@ const CITY_TO_TIMEZONE: Record<string, string> = {
 
 export async function handleOnboardingOrCommand(env: Env, update: TelegramUpdate): Promise<boolean> {
   const message = update.message;
-  const text = message?.text?.trim();
-  if (!message || !text) {
+  const callbackQuery = update.callback_query;
+  const isMessage = !!message;
+  const isCallback = !!callbackQuery;
+
+  if (!isMessage && !isCallback) {
     return false;
   }
 
-  const chatId = message.chat.id;
-  const telegramUserId = message.from?.id ?? chatId;
+  const chatId = message?.chat.id ?? callbackQuery?.message?.chat.id;
+  const telegramUserId = message?.from?.id ?? callbackQuery?.from?.id;
+  const messageId = message?.message_id ?? callbackQuery?.message?.message_id;
+
+  if (!chatId || !telegramUserId) {
+    return false;
+  }
+
+  const text = message?.text?.trim() ?? "";
 
   if (text === "/start") {
     await upsertUserForStart(env, telegramUserId, chatId);
@@ -87,10 +97,24 @@ export async function handleOnboardingOrCommand(env: Env, update: TelegramUpdate
   }
 
   if (user.onboarding_step === "awaiting_timezone") {
-    const resolvedTimezone = resolveTimezone(text);
+    let resolvedTimezone: string | null = null;
+
+    if (callbackQuery?.data?.startsWith("tz:")) {
+      resolvedTimezone = callbackQuery.data.slice(3);
+      if (messageId) {
+        await editTelegramMessageText(env, chatId, messageId, `✅ Timezone set to: ${resolvedTimezone}`);
+      }
+      await answerCallbackQuery(env, callbackQuery.id);
+    } else if (text) {
+      resolvedTimezone = resolveTimezone(text);
+    }
+
     if (!resolvedTimezone) {
-      await sendTimezoneRetry(env, chatId);
-      return true;
+      if (text) {
+        await sendTimezoneRetry(env, chatId);
+        return true;
+      }
+      return false;
     }
 
     await updateUserOnboardingState(env, user.id, {
@@ -102,10 +126,24 @@ export async function handleOnboardingOrCommand(env: Env, update: TelegramUpdate
   }
 
   if (user.onboarding_step === "awaiting_currency") {
-    const currency = normalizeCurrency(text);
+    let currency: string | null = null;
+
+    if (callbackQuery?.data?.startsWith("cur:")) {
+      currency = callbackQuery.data.slice(4);
+      if (messageId) {
+        await editTelegramMessageText(env, chatId, messageId, `✅ Currency set to: ${currency}`);
+      }
+      await answerCallbackQuery(env, callbackQuery.id);
+    } else if (text) {
+      currency = normalizeCurrency(text);
+    }
+
     if (!currency) {
-      await sendCurrencyRetry(env, chatId);
-      return true;
+      if (text) {
+        await sendCurrencyRetry(env, chatId);
+        return true;
+      }
+      return false;
     }
 
     await updateUserOnboardingState(env, user.id, {
@@ -136,13 +174,34 @@ export async function handleOnboardingOrCommand(env: Env, update: TelegramUpdate
     }
 
     const normalized = text.toLowerCase();
-    if (normalized === "keep current") {
+    let isAccept = false;
+    let isReject = false;
+
+    if (callbackQuery?.data === "tz_confirm:keep") {
+      isReject = true;
+      await answerCallbackQuery(env, callbackQuery.id);
+      if (messageId) {
+        await editTelegramMessageText(env, chatId, messageId, `✅ Kept existing timezone: ${user.timezone}`);
+      }
+    } else if (callbackQuery?.data === "tz_confirm:use") {
+      isAccept = true;
+      await answerCallbackQuery(env, callbackQuery.id);
+      if (messageId) {
+        await editTelegramMessageText(env, chatId, messageId, `✅ Updated timezone to: ${suggestedTimezone}`);
+      }
+    } else if (normalized === "keep current") {
+      isReject = true;
+    } else if (normalized === "use suggested") {
+      isAccept = true;
+    }
+
+    if (isReject) {
       await updateUserOnboardingState(env, user.id, { onboardingStep: "completed" });
       await sendOnboardingComplete(env, chatId, user.timezone ?? "Unknown", currency ?? "Unknown");
       return true;
     }
 
-    if (normalized === "use suggested") {
+    if (isAccept) {
       await setUserTimezone(env, user.id, suggestedTimezone);
       await updateUserOnboardingState(env, user.id, { onboardingStep: "completed" });
       await sendOnboardingComplete(env, chatId, suggestedTimezone, currency ?? "Unknown");
@@ -153,7 +212,14 @@ export async function handleOnboardingOrCommand(env: Env, update: TelegramUpdate
       env,
       chatId,
       "Please choose one option: Keep current or Use suggested.",
-      { keyboard: [["Keep current", "Use suggested"]] }
+      {
+        inline_keyboard: [
+          [
+            { text: "Keep current", callback_data: `tz_confirm:keep` },
+            { text: "Use suggested", callback_data: `tz_confirm:use` }
+          ]
+        ]
+      }
     );
     return true;
   }
@@ -203,9 +269,20 @@ async function sendTimezonePrompt(env: Env, chatId: number) {
       "Send your expenses as text, photo, or voice.",
       "",
       "First, set your timezone.",
-      "You can type a city (example: Manila, Singapore, Bangkok) or an IANA timezone."
+      "Select an option below or type a city (example: Manila, Singapore, Bangkok)."
     ].join("\n"),
-    { keyboard: [["Asia/Manila", "Asia/Singapore"], ["Other"]] }
+    {
+      inline_keyboard: [
+        [
+          { text: "Asia/Manila", callback_data: "tz:Asia/Manila" },
+          { text: "Asia/Singapore", callback_data: "tz:Asia/Singapore" }
+        ],
+        [
+          { text: "Asia/Bangkok", callback_data: "tz:Asia/Bangkok" },
+          { text: "Asia/Jakarta", callback_data: "tz:Asia/Jakarta" }
+        ]
+      ]
+    }
   );
 }
 
@@ -213,8 +290,15 @@ async function sendTimezoneRetry(env: Env, chatId: number) {
   await sendTelegramChatMessage(
     env,
     chatId,
-    "I could not resolve that timezone. Type a city (Manila, Singapore, Bangkok) or IANA timezone (Asia/Manila).",
-    { keyboard: [["Asia/Manila", "Asia/Singapore"], ["Other"]] }
+    "I could not resolve that timezone. Try selecting an option or typing a city like Manila or Singapore.",
+    {
+      inline_keyboard: [
+        [
+          { text: "Asia/Manila", callback_data: "tz:Asia/Manila" },
+          { text: "Asia/Singapore", callback_data: "tz:Asia/Singapore" }
+        ]
+      ]
+    }
   );
 }
 
@@ -224,10 +308,11 @@ async function sendCurrencyPrompt(env: Env, chatId: number) {
     chatId,
     "Choose your primary currency (ISO 4217).",
     {
-      keyboard: [
-        [...PRIORITY_CURRENCIES],
-        ["BND", "KHR", "IDR", "LAK", "MYR"],
-        ["MMK", "THB", "VND", "Other"]
+      inline_keyboard: [
+        PRIORITY_CURRENCIES.map(c => ({ text: c, callback_data: `cur:${c}` })),
+        ["BND", "KHR", "IDR"].map(c => ({ text: c, callback_data: `cur:${c}` })),
+        ["LAK", "MYR", "MMK"].map(c => ({ text: c, callback_data: `cur:${c}` })),
+        ["THB", "VND"].map(c => ({ text: c, callback_data: `cur:${c}` }))
       ]
     }
   );
@@ -237,8 +322,12 @@ async function sendCurrencyRetry(env: Env, chatId: number) {
   await sendTelegramChatMessage(
     env,
     chatId,
-    "Please send a 3-letter ISO currency code (example: PHP, SGD, USD, EUR).",
-    { keyboard: [[...PRIORITY_CURRENCIES], ["BND", "KHR", "IDR", "LAK", "MYR"], ["MMK", "THB", "VND", "Other"]] }
+    "Please select or type a 3-letter ISO currency code (example: PHP, SGD, USD, EUR).",
+    {
+      inline_keyboard: [
+        PRIORITY_CURRENCIES.map(c => ({ text: c, callback_data: `cur:${c}` }))
+      ]
+    }
   );
 }
 
@@ -253,7 +342,14 @@ async function sendCurrencyTimezoneConfirmation(
     env,
     chatId,
     `Currency ${currency} is usually used with ${suggestedTimezone}. Keep your current timezone (${currentTimezone})?`,
-    { keyboard: [["Keep current", "Use suggested"]] }
+    {
+      inline_keyboard: [
+        [
+          { text: "Keep current", callback_data: `tz_confirm:keep` },
+          { text: "Use suggested", callback_data: `tz_confirm:use` }
+        ]
+      ]
+    }
   );
 }
 

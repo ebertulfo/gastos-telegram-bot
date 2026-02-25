@@ -1,11 +1,12 @@
-import { extractAmountCurrencyFromR2Image, transcribeR2Audio } from "./ai/openai";
+import { extractAmountCurrencyFromR2Image, extractAmountCurrencyFromText, transcribeR2Audio } from "./ai/openai";
+import { sendTelegramChatMessage } from "./telegram/messages";
 import type { Env, ParseQueueMessage } from "./types";
 
 export async function handleParseQueueBatch(batch: MessageBatch<ParseQueueMessage>, env: Env) {
   for (const message of batch.messages) {
     try {
       const sourceEvent = await env.DB.prepare(
-        `SELECT se.id, se.user_id, se.message_type, se.text_raw, se.r2_object_key, se.received_at_utc, u.currency AS user_currency
+        `SELECT se.id, se.user_id, se.message_type, se.text_raw, se.r2_object_key, se.received_at_utc, u.currency AS user_currency, u.telegram_id
          FROM source_events se
          LEFT JOIN users u ON u.id = se.user_id
          WHERE se.id = ?`
@@ -19,6 +20,7 @@ export async function handleParseQueueBatch(batch: MessageBatch<ParseQueueMessag
           r2_object_key: string | null;
           received_at_utc: string;
           user_currency: string | null;
+          telegram_id: number | null;
         }>();
 
       if (!sourceEvent) {
@@ -70,6 +72,20 @@ export async function handleParseQueueBatch(batch: MessageBatch<ParseQueueMessag
             new Date().toISOString()
           )
           .run();
+
+        if (sourceEvent.telegram_id) {
+          const formattedMinor = (extraction.amountMinor / 100).toFixed(2);
+          let replyText = `✅ Logged: ${extraction.currency} ${formattedMinor}`;
+          if (extraction.needsReview) {
+            replyText += `\n⚠️ Marked for review (confidence: ${Math.round(extraction.confidence * 100)}%)`;
+          }
+          await sendTelegramChatMessage(env, sourceEvent.telegram_id, replyText);
+        }
+      } else {
+        if (sourceEvent.telegram_id) {
+          const reason = String(extraction.parsedJson.reason || "unrecognized format");
+          await sendTelegramChatMessage(env, sourceEvent.telegram_id, `❌ Failed to extract amount: ${reason}`);
+        }
       }
 
       message.ack();
@@ -116,13 +132,28 @@ export async function extractForSourceEvent(
       return unprocessedResult("voice", "transcription_empty");
     }
 
-    const textExtraction = extractFromText(transcript, userCurrency);
+    const aiExtraction = await extractAmountCurrencyFromText(env, transcript, userCurrency);
+    if (!aiExtraction) {
+      return unprocessedResult("voice", "ai_text_extraction_failed");
+    }
+
+    let resolvedCurrency = aiExtraction.currency;
+    if (!resolvedCurrency) {
+      resolvedCurrency = userCurrency;
+    }
+
     return {
-      ...textExtraction,
+      amountMinor: aiExtraction.amountMinor,
+      currency: resolvedCurrency,
+      needsReview: aiExtraction.needsReview || !aiExtraction.currency,
+      confidence: aiExtraction.confidence,
       parsedJson: {
-        ...textExtraction.parsedJson,
         modality: "voice",
-        transcript
+        status: aiExtraction.amountMinor !== null && resolvedCurrency ? "extracted" : "unprocessed",
+        amountMinor: aiExtraction.amountMinor,
+        currency: resolvedCurrency,
+        transcript,
+        ...aiExtraction.metadata
       }
     };
   }
@@ -132,7 +163,7 @@ export async function extractForSourceEvent(
       return unprocessedResult("photo", "missing_photo_media_or_openai_key");
     }
 
-    const visionExtraction = await extractAmountCurrencyFromR2Image(env, mediaKey);
+    const visionExtraction = await extractAmountCurrencyFromR2Image(env, mediaKey, userCurrency);
     if (!visionExtraction) {
       return unprocessedResult("photo", "vision_empty");
     }

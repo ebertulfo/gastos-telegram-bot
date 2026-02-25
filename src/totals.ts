@@ -46,13 +46,12 @@ export async function getTotalsForUserAndPeriod(
        COALESCE(SUM(amount_minor), 0) AS total_minor,
        COUNT(*) AS count,
        COALESCE(SUM(CASE WHEN status = 'needs_review' THEN 1 ELSE 0 END), 0) AS needs_review_count
-     FROM expenses
+      FROM expenses
      WHERE user_id = ?
-       AND currency = ?
        AND occurred_at_utc >= ?
        AND occurred_at_utc <= ?`
   )
-    .bind(input.userId, input.currency, range.startUtc.toISOString(), range.endUtc.toISOString())
+    .bind(input.userId, range.startUtc.toISOString(), range.endUtc.toISOString())
     .first<{ total_minor: number | string; count: number | string; needs_review_count: number | string }>();
 
   return {
@@ -198,16 +197,42 @@ function localDateTimeToUtc(
   second: number
 ): Date {
   const utcGuessMs = Date.UTC(year, month - 1, day, hour, minute, second);
-  const offsetMs = getTimezoneOffsetMs(new Date(utcGuessMs), timezone);
+  const guessDate = new Date(utcGuessMs);
+
+  const localFormatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23"
+  });
+
+  const parts = localFormatter.formatToParts(guessDate);
+  const lookup = (type: string) => Number.parseInt(parts.find((part) => part.type === type)?.value ?? "0", 10);
+
+  const localGuessMs = Date.UTC(
+    lookup("year"),
+    lookup("month") - 1,
+    lookup("day"),
+    lookup("hour"),
+    lookup("minute"),
+    lookup("second")
+  );
+
+  const offsetMs = localGuessMs - utcGuessMs;
   return new Date(utcGuessMs - offsetMs);
 }
 
 function shiftLocalDate(input: { year: number; month: number; day: number }, deltaDays: number) {
-  const shifted = new Date(Date.UTC(input.year, input.month - 1, input.day + deltaDays));
+  const date = new Date(Date.UTC(input.year, input.month - 1, input.day));
+  date.setUTCDate(date.getUTCDate() + deltaDays);
   return {
-    year: shifted.getUTCFullYear(),
-    month: shifted.getUTCMonth() + 1,
-    day: shifted.getUTCDate()
+    year: date.getUTCFullYear(),
+    month: date.getUTCMonth() + 1,
+    day: date.getUTCDate()
   };
 }
 

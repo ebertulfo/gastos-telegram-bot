@@ -33,6 +33,19 @@ export type TelegramUpdate = {
       file_size?: number;
     };
   };
+  callback_query?: {
+    id: string;
+    from: {
+      id: number;
+    };
+    message?: {
+      message_id: number;
+      chat: {
+        id: number;
+      };
+    };
+    data?: string;
+  };
 };
 
 export type Env = {

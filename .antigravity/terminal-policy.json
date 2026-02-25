@@ -1,0 +1,15 @@
+{
+    "terminalPolicy": "Turbo",
+    "denyList": [
+        "rm -rf",
+        "dropdb",
+        "npm publish",
+        "git push --force"
+    ],
+    "allowList": [
+        "npm run test",
+        "npm run check",
+        "npm run dev"
+    ],
+    "preTaskHooks": {}
+}

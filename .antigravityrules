@@ -1,0 +1,9 @@
+# Global Project Rules
+
+- **Execution Context:** Cloudflare Worker (Node.js compatibility).
+- **Language**: TypeScript (Strict Mode enabled). Never use `any`.
+- **Frameworks:** Hono, Zod, grammY.
+- **Database:** Cloudflare D1. All timestamp persistence MUST be UTC.
+- **Package Manager**: Use `npm`. Do NOT use `pnpm` or `yarn`.
+- **Testing:** `vitest` via `@cloudflare/vitest-pool-workers`.
+- **Agent Behavior**: Before generating code or modifying the schema, always output a structured Implementation Plan Artifact for approval. Validate against `docs/RULES.md` and `tprd.md`.

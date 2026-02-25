@@ -37,12 +37,25 @@ const updateSchema = z.object({
         })
         .optional()
     })
+    .optional(),
+  callback_query: z
+    .object({
+      id: z.string(),
+      from: z.object({ id: z.number() }),
+      message: z
+        .object({
+          message_id: z.number(),
+          chat: z.object({ id: z.number() })
+        })
+        .optional(),
+      data: z.string().optional()
+    })
     .optional()
 });
 
 export async function handleTelegramWebhook(c: Context<{ Bindings: Env }>) {
   const payload = updateSchema.safeParse(await c.req.json());
-  if (!payload.success || !payload.data.message) {
+  if (!payload.success || (!payload.data.message && !payload.data.callback_query)) {
     return c.json({ status: "ignored", message: "Unsupported update type" }, 200);
   }
 
@@ -52,8 +65,14 @@ export async function handleTelegramWebhook(c: Context<{ Bindings: Env }>) {
     return c.json({ status: "handled", message: "Message handled by command/onboarding flow" }, 200);
   }
 
-  const chatId = update.message!.chat.id;
-  const telegramUserId = update.message?.from?.id ?? chatId;
+  // If we reach here, it must be an expense ingestion message.
+  // We don't ingest callback queries as expenses.
+  if (!update.message) {
+    return c.json({ status: "ignored", message: "Unhandled callback query" }, 200);
+  }
+
+  const chatId = update.message.chat.id;
+  const telegramUserId = update.message.from?.id ?? chatId;
   const user = await upsertUserForIngestion(c.env, telegramUserId, chatId);
   const sourceEvent = await persistSourceEvent(c.env, user.id, update);
   let uploadedR2ObjectKey: string | null = null;

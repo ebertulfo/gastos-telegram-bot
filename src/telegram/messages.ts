@@ -6,6 +6,7 @@ type TelegramSendMessageResponse = {
 
 type SendMessageOptions = {
   keyboard?: string[][];
+  inline_keyboard?: { text: string; callback_data: string }[][];
 };
 
 export async function sendTelegramChatMessage(
@@ -14,14 +15,19 @@ export async function sendTelegramChatMessage(
   text: string,
   options: SendMessageOptions = {}
 ): Promise<void> {
-  const replyMarkup =
-    options.keyboard && options.keyboard.length
-      ? {
-          keyboard: options.keyboard.map((row) => row.map((value) => ({ text: value }))),
-          resize_keyboard: true,
-          one_time_keyboard: true
-        }
-      : undefined;
+  let replyMarkup: unknown = undefined;
+
+  if (options.inline_keyboard && options.inline_keyboard.length) {
+    replyMarkup = {
+      inline_keyboard: options.inline_keyboard
+    };
+  } else if (options.keyboard && options.keyboard.length) {
+    replyMarkup = {
+      keyboard: options.keyboard.map((row) => row.map((value) => ({ text: value }))),
+      resize_keyboard: true,
+      one_time_keyboard: true
+    };
+  }
 
   const response = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
     method: "POST",
@@ -42,5 +48,60 @@ export async function sendTelegramChatMessage(
   const json = (await response.json()) as TelegramSendMessageResponse;
   if (!json.ok) {
     throw new Error("Telegram sendMessage returned ok=false");
+  }
+}
+
+export async function editTelegramMessageText(
+  env: Env,
+  chatId: number,
+  messageId: number,
+  text: string,
+  options: SendMessageOptions = {}
+): Promise<void> {
+  let replyMarkup: unknown = undefined;
+
+  if (options.inline_keyboard && options.inline_keyboard.length) {
+    replyMarkup = {
+      inline_keyboard: options.inline_keyboard
+    };
+  }
+
+  const response = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/editMessageText`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      chat_id: chatId,
+      message_id: messageId,
+      text,
+      reply_markup: replyMarkup
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`Telegram editMessageText failed with status ${response.status}`);
+  }
+
+  const json = (await response.json()) as TelegramSendMessageResponse;
+  if (!json.ok) {
+    throw new Error("Telegram editMessageText returned ok=false");
+  }
+}
+
+export async function answerCallbackQuery(env: Env, callbackQueryId: string, text?: string): Promise<void> {
+  const response = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/answerCallbackQuery`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      callback_query_id: callbackQueryId,
+      text
+    })
+  });
+
+  if (!response.ok) {
+    console.error(`Telegram answerCallbackQuery failed with status ${response.status}`);
   }
 }

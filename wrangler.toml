@@ -5,16 +5,16 @@ workers_dev = true
 
 [[d1_databases]]
 binding = "DB"
-database_name = "gastos"
-database_id = "replace-with-your-d1-database-id"
+database_name = "gastos-db"
+database_id = "7706d50c-3888-44e2-a135-7c32737cff74"
 migrations_dir = "migrations"
 
 [[queues.producers]]
 binding = "INGEST_QUEUE"
-queue = "gastos-parse-jobs"
+queue = "gastos-parse-queue"
 
 [[queues.consumers]]
-queue = "gastos-parse-jobs"
+queue = "gastos-parse-queue"
 
 [[r2_buckets]]
 binding = "MEDIA_BUCKET"
@@ -22,6 +22,5 @@ bucket_name = "gastos-media"
 
 [vars]
 APP_ENV = "dev"
-TELEGRAM_BOT_TOKEN = "replace-me"
 OPENAI_TRANSCRIBE_MODEL = "gpt-4o-mini-transcribe"
 OPENAI_VISION_MODEL = "gpt-4.1-mini"
