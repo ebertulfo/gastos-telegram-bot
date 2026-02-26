@@ -29,3 +29,11 @@ Move beyond simple text descriptions to structured, queryable tags that tie dire
 * **User-Defined Tags**: Users can naturally inject tags into their messages ("Five dollar coffee #work_expense"), which the parser will strictly extract and respect.
 * **Analytics Integration**: Tags will power pie charts, filtering, and deep analytics on the React Mini App dashboard.
 * **Synergy with Agent**: The Agent can use tags as strict filters when calling the `fetch_expenses` tool, making its data retrieval much more accurate.
+
+## 4. Scheduled AI Summaries & Alerts
+
+Proactive, automated messages that keep the user informed about their spending velocity without them having to ask.
+
+* **Automated Rollups**: "Cron triggers" running on Cloudflare that generate a natural language summary at the end of the day, week, or month (e.g., "🎯 **Weekly Wrap-Up**: You spent $150 this week. Your biggest category was Dining ($80).").
+* **Budget Pacing & Alerts**: The bot can alert the user if they're burning through their monthly "food" tag budget unusually fast based on the RAG history context.
+* **Custom Send Times**: Allow users to configure when they receive these (e.g., Every Sunday at 8 PM, or every day at 9 PM).
