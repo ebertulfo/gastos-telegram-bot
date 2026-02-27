@@ -34,12 +34,12 @@ export async function upsertUserForStart(
       currency,
       onboarding_step,
       created_at_utc
-    ) VALUES (?, ?, NULL, NULL, 'awaiting_timezone', ?)
+    ) VALUES (?, ?, NULL, NULL, 'awaiting_currency', ?)
     ON CONFLICT(telegram_user_id) DO UPDATE SET
       telegram_chat_id = excluded.telegram_chat_id,
       timezone = NULL,
       currency = NULL,
-      onboarding_step = 'awaiting_timezone'`
+      onboarding_step = 'awaiting_currency'`
   )
     .bind(telegramUserId, telegramChatId, new Date().toISOString())
     .run();

@@ -30,7 +30,7 @@ function createOnboardingEnv(initialUser: UserRow | null) {
               telegram_chat_id: 77,
               timezone: null,
               currency: null,
-              onboarding_step: "awaiting_timezone"
+              onboarding_step: "awaiting_currency"
             };
             return upsertRun();
           })
@@ -120,7 +120,7 @@ describe("onboarding and command handling", () => {
     fetchMock.mockRestore();
   });
 
-  it("accepts city timezone and asks for currency", async () => {
+  it("accepts currency and sets inferred timezone", async () => {
     const app = createApp();
     const { env, send } = createOnboardingEnv({
       id: 1,
@@ -128,11 +128,11 @@ describe("onboarding and command handling", () => {
       telegram_chat_id: 77,
       timezone: null,
       currency: null,
-      onboarding_step: "awaiting_timezone"
+      onboarding_step: "awaiting_currency"
     });
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
 
-    const response = await app.fetch(requestForText("Manila"), env);
+    const response = await app.fetch(requestForText("PHP"), env);
     const json = (await response.json()) as { status: string };
 
     expect(response.status).toBe(200);
@@ -149,7 +149,7 @@ describe("onboarding and command handling", () => {
       id: 1,
       telegram_user_id: 88,
       telegram_chat_id: 77,
-      timezone: "Asia/Manila",
+      timezone: null,
       currency: null,
       onboarding_step: "awaiting_currency"
     });
