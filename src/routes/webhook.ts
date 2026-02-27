@@ -54,8 +54,13 @@ const updateSchema = z.object({
 });
 
 export async function handleTelegramWebhook(c: Context<{ Bindings: Env }>) {
-  const payload = updateSchema.safeParse(await c.req.json());
+  const json = await c.req.json();
+  const payload = updateSchema.safeParse(json);
   if (!payload.success || (!payload.data.message && !payload.data.callback_query)) {
+    if (!payload.success) {
+      console.error("Zod Validation Error:", JSON.stringify(payload.error.errors));
+      console.log("Raw Telegram Payload:", JSON.stringify(json));
+    }
     return c.json({ status: "ignored", message: "Unsupported update type" }, 200);
   }
 
@@ -91,18 +96,12 @@ export async function handleTelegramWebhook(c: Context<{ Bindings: Env }>) {
     }
   }
 
-  const acknowledgementText = sourceEvent.duplicate ? "Already saved ✅" : "Saved ✅";
-  const ackTask = sendTelegramChatMessage(c.env, chatId, acknowledgementText).catch((error) => {
-    console.error("Telegram acknowledgement failed", {
-      sourceEventId: sourceEvent.id,
-      error: error instanceof Error ? error.message : String(error)
+  if (sourceEvent.duplicate) {
+    console.warn("Duplicate Telegram payload received", {
+      chatId,
+      messageId: update.message.message_id,
+      sourceEventId: sourceEvent.id
     });
-  });
-  const executionCtx = getExecutionCtx(c);
-  if (executionCtx?.waitUntil) {
-    executionCtx.waitUntil(ackTask);
-  } else {
-    await ackTask;
   }
 
   const queueMessage: ParseQueueMessage = {
@@ -117,8 +116,8 @@ export async function handleTelegramWebhook(c: Context<{ Bindings: Env }>) {
 
   return c.json(
     sourceEvent.duplicate
-      ? { status: "duplicate", message: acknowledgementText }
-      : { status: "saved", message: acknowledgementText },
+      ? { status: "duplicate" }
+      : { status: "saved" },
     200
   );
 }

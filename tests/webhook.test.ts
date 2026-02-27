@@ -133,8 +133,8 @@ describe("telegram webhook", () => {
 
     const json = (await response.json()) as WebhookResponse;
     expect(json.status).toBe("saved");
-    expect(send).toHaveBeenCalledTimes(1);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledTimes(1); // Webhook no longer sends "Saved" message
+    expect(fetchMock).toHaveBeenCalledTimes(0); // Webhook no longer calls Telegram API
 
     fetchMock.mockRestore();
   });
@@ -158,7 +158,7 @@ describe("telegram webhook", () => {
     const json = (await response.json()) as WebhookResponse;
     expect(json.status).toBe("duplicate");
     expect(send).not.toHaveBeenCalled();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(0); // Webhook no longer calls Telegram API
 
     fetchMock.mockRestore();
   });
@@ -186,8 +186,8 @@ describe("telegram webhook", () => {
     expect(response.status).toBe(200);
     expect(put).toHaveBeenCalledTimes(1);
     expect(updateRun).toHaveBeenCalledTimes(1);
-    expect(send).toHaveBeenCalledTimes(1);
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(send).toHaveBeenCalledTimes(1); // Webhook no longer sends "Saved" message
+    expect(fetchMock).toHaveBeenCalledTimes(2); // Only getFile and downloadFile, no send message
 
     fetchMock.mockRestore();
   });
