@@ -22,10 +22,10 @@ Before writing a single line of code, you must define the **SMART** goals (Speci
 * Validate the scope against existing documentation (e.g., `TPRD.md`).
 * Draft a clear implementation plan (`implementation_plan.md`) and get explicit approval.
 
-### Phase 2: Make a Plan (The Blueprint)
-* Break down the approved scope into discrete deliverables and milestones.
-* Document these milestones in the `TASKS.md` tracker.
-* Identify impacted architectural layers (e.g., Database Migrations, Webhook latency, Frontend State).
+### Phase 2: Spec-Driven Design (The Blueprint)
+* **Stop and Write Specs**: Before writing any code, duplicate `docs/core/SPEC_TEMPLATE.md` into `docs/specs/[feature-name].md`.
+* Define the Intent, explicit Data Contracts (JSON/DB schemas), Constraints (edge cases), and Acceptance Criteria.
+* **The AI-Handover Rule**: The Agent cannot proceed to Phase 3 (Execution) until the Product Owner explicitly reviews and approves the Spec document.
 
 ### Phase 3: Execute (The Implementation)
 * Monitor progress strictly against the plan. 

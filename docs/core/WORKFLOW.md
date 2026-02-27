@@ -6,13 +6,13 @@
 - Agent selects one task slice that can be delivered end-to-end.
 - Agent confirms acceptance criteria before implementation.
 
-## 2. Plan (The Pre-Flight Checklist)
+## 2. Spec-Driven Design (SDD)
 
-- Validate scope against `/Users/edrianbertulfo/Dev/gastos-telegram-bot/tprd.md`.
-- Identify impacted layers: webhook worker, queue consumer, D1 schema/migrations, bot command handlers, tests, docs.
-- **Data Contract Validation (Gap Analysis)**: Explicitly map the end-to-end data flow. What exact JSON does the external API (e.g. Telegram) send? What MIME types? Does it perfectly match the Zod schemas and D1 table columns? Do not guess; document the exact shape and identify edge cases.
-- **Error Handling Design**: How will the system fail gracefully? (e.g. logging raw payloads on Zod failure, sending "Unrecognized format" to the user instead of silent crashes).
-- Define test cases before coding.
+- **Stop and Write Specs**: Before writing any code, duplicate `docs/core/SPEC_TEMPLATE.md` into `docs/specs/[feature-name].md`.
+- **The Intent**: Document exactly what business value this feature provides and what is implicitly Out of Scope.
+- **The Contract**: Explicitly map the end-to-end data flow (e.g. JSON payloads, Zod schemas, exact D1 column names). Do not guess; document the exact shape.
+- **The Constraints**: Document edge cases. How will the system fail gracefully? (e.g. logging raw payloads on Zod failure, sending "Unrecognized format" to the user).
+- **Approval Gate**: The Agent cannot proceed to Implementation until the Product Owner explicitly approves the Spec document.
 
 ## 3. Implement
 
