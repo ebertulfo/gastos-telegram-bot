@@ -14,7 +14,13 @@
 - **The Constraints**: Document edge cases. How will the system fail gracefully? (e.g. logging raw payloads on Zod failure, sending "Unrecognized format" to the user).
 - **Approval Gate**: The Agent cannot proceed to Implementation until the Product Owner explicitly approves the Spec document.
 
-## 3. Implement
+## 3. Handling Changes & Bug Fixes (Living Documents)
+
+- **Do Not Start From Scratch**: If modifying an existing feature or fixing a systemic bug, do not write a new Spec.
+- **Update the Blueprint**: Open the original Spec in `docs/specs/[feature-name].md`. Update the "Intent", "Contract", or add a new "Constraint" that precisely addresses the bug/change.
+- **Approval Gate**: The Product Owner must approve the modified Spec before the Agent patches the codebase. The Spec must always perfectly reflect the current state of the source code.
+
+## 4. Implement
 
 - Keep webhook path minimal and non-blocking.
 - Persist first, acknowledge second, enqueue third.
