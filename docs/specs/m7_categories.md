@@ -2,8 +2,11 @@
 
 ## 1. Intent (The "What")
 * **Goal**: To intelligently categorize expenses parsed by the AI into strict, high-level buckets (e.g., Food, Transport) and visualize spending breakdowns in the React Mini-app.
-* **Problem**: Unbounded AI "tags" (e.g., `#starbucks`, `#coffee`) create noisy datasets that are impossible to chart accurately. 
-* **UX Fix Scope**: We will force the AI to select from a strict union of predefined categories. If it is unsure, it will select `Other` and set `needs_review: true`. We will then build a new "Analytics" tab in the React app featuring a Donut Chart/List to visualize spending by category.
+* **Problem**: Unbounded AI "tags" (e.g., `#starbucks`, `#coffee`) create noisy datasets that are impossible to chart accurately at a macro scale. However, relying *only* on strict categories loses the granular context of the purchase.
+* **UX Fix Scope (M9 RAG Prep)**: We will implement a **Hybrid Approach**:
+    1.  **Strict Categories (Metadata)**: The AI must select from a predefined `enum`. This gives us clean Donut Charts today, and act as strict **Pre-Filter Metadata** for Cloudflare Vectorize in M9 (allowing lightning-fast searches like "only search vectors within the Food category").
+    2.  **Granular Tags (Embeddings)**: The AI will concurrently extract a JSON array of descriptive tags (e.g., `["starbucks", "coffee", "latte"]`). These tags will serve as the extreme high-signal text payload that gets embedded into the vector database in M9, drastically improving semantic recall.
+* We will build a new "Analytics" tab in the React app featuring a Donut Chart to visualize spending by the strict Category, while still displaying the Tags context in the list view.
 
 ## 2. Architecture & Data Flow (The "How")
 
@@ -18,34 +21,38 @@ We will define a strict set of global categories:
 * `Other` (Misc. or Unknown)
 
 ### 2.2 OpenAI Zod Schema (`src/ai/openai.ts`)
-We will update our strict `zod` extraction schema to include:
+We will update our strict `zod` extraction schema to include both fields:
 ```typescript
 category: z.enum([
   "Food", "Transport", "Housing", "Shopping", "Entertainment", "Health", "Other"
-]).describe("The strict master category this expense falls into.")
+]).describe("The strict master category this expense falls into."),
+tags: z.array(z.string()).describe("An array of 1 to 3 relevant context tags. e.g. ['coffee', 'starbucks']. All lowercase.")
 ```
-We will update the system prompt to explicitly instruct the AI *not* to invent tags, and if it chooses "Other", it must flag the expense for `needs_review: true`.
+We will update the system prompt to explicitly instruct the AI to categorize the expense strictly, and to extract highly descriptive, lowercase context tags.
 
 ### 2.3 Database Schema (`src/db/expenses.ts`)
 We will execute a D1 Migration (`0002_add_categories.sql`):
 ```sql
 ALTER TABLE expenses ADD COLUMN category TEXT DEFAULT 'Other';
+ALTER TABLE expenses ADD COLUMN tags TEXT DEFAULT '[]'; -- JSON Array
 ```
 *Note: Because we want SQLite query simplicity, and we don't want users arbitrarily inventing new categories and breaking the donut charts, we will start with a simple textual `category` column validated at the application layer, rather than a separate relational table.*
 
 ### 2.4 Web App UI (`webapp/`)
 * **Bottom Navigation**: The app will now have two main tabs: `📱 Dashboard` and `📊 Analytics`.
-* **Dashboard Drawer Update**: The existing `ReviewDrawer` will be updated to include a `Category` Select dropdown, so users can correct categorized mistakes.
-* **AnalyticsScreen.tsx**: A new screen that fetches `api/expenses` and uses a charting library (e.g., `recharts` or native Shadcn charts) to display a Donut/Pie chart of total spend per Category.
+* **Dashboard Expense Rows**: Update the row UI to render the new `tags` array beautifully beneath the `parsed_description`.
+* **Dashboard Drawer Update**: The existing `ReviewDrawer` will be updated to include a `Category` Select dropdown and a dynamic `Tags` input, so users can correct categorized mistakes.
+* **AnalyticsScreen.tsx**: A new screen that fetches `api/expenses` and uses a charting library (e.g., `recharts` or native Shadcn charts) to display a Donut/Pie chart of total spend per Master Category.
 
 ## 3. Data Contract
-* **Database Target**: `expenses.category` (TEXT)
+* **Database Target**: `expenses.category` (TEXT) and `expenses.tags` (TEXT containing JSON array)
 * **Frontend Payload** (sent via `api.ts` `updateExpense`):
     ```json
     {
       "amount_minor": 15000, 
       "currency": "PHP",
-      "category": "Food"
+      "category": "Food",
+      "tags": ["coffee", "starbucks", "date"]
     }
     ```
 
