@@ -38,19 +38,13 @@ Proactive, automated messages that keep the user informed about their spending v
 * **Budget Pacing & Alerts**: The bot can alert the user if they're burning through their monthly "food" tag budget unusually fast based on the RAG history context.
 * **Custom Send Times**: Allow users to configure when they receive these (e.g., Every Sunday at 8 PM, or every day at 9 PM).
 
-## 5. Interactive Budget Coaching & Goal Setting
-
-Since the system leverages RAG, it fundamentally understands the user's velocity of spending.
-* **"What If" Projections**: Users can ask, "If I stop buying coffee every day, how much will I save this year?" The Agent runs the math based on actual historical indexed coffee expenses.
-* **Contextual Goal Setting**: Users can say "Set a limit of $200 for dining this month." As future receipts are processed, the agent monitors the "dining" tag and proactively drops a Telegram message if they hit 80% or 100% of the threshold.
-
-## 6. Conversational Receipt Splitter & Group Debts
+## 5. Conversational Receipt Splitter & Group Debts
 
 Instead of just tracking personal expenses, leverage Vision and the Agent to handle awkward group bills.
 * **Line-Item Analysis**: Feed a long group dinner receipt into the parser. The bot extracts every single line item into RAG memory.
 * **Agentic Split Allocation**: "Split this receipt with Alice and Bob. Alice had the Pasta, Bob had the Burger, and split tax evenly." The agent calculates debts accurately and spits out a formatted template you can immediately forward to your friends for Venmo/PayNow.
 
-## 7. Warranty & Subscription Auditing
+## 6. Warranty & Subscription Auditing
 
 * **Asset Memory**: The agent identifies and flags high-value purchases (e.g. "MacBook Pro") and recurring monthly charges (e.g., "Spotify Premium").
 * **Temporal Queries**: Users can later ask: "When does the warranty expire for my laptop?" The RAG agent retrieves the exact date of purchase and calculates the remaining warranty window.
