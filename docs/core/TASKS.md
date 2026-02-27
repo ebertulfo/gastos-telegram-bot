@@ -71,6 +71,30 @@ Status legend: `todo | in-progress | blocked | done`
 - Ensure source-event traceability and correction hooks
 - Tests: web queue visibility and correction linkage
 
+7. M7 - Expense Tags & Categorization (`todo`)
+- Update OpenAI prompt to extract tags (#food, #transport) from text/vision
+- Update D1 schema for tags storage/querying
+- Update React UI to include pie chart and tag analytics
+
+8. M8 - Scheduled AI Summaries (`todo`)
+- Setup Cloudflare Cron worker for weekly execution
+- D1 aggregate logic for weekly spend
+- Implement Telegram push message payload for proactive alerts
+
+9. M9 - RAG Phase 1: Vectorize Setup (`todo`)
+- Create Cloudflare Vectorize index
+- Integrate `text-embedding-3-small` inside queue worker on parse
+- Create one-time backfill script for historical D1 rows
+
+10. M10 - Agentic AI Phase 1: Semantic Chat (`todo`)
+- Create OpenAI Function Calling layer with Tools access
+- Implement D1 conversational history / memory table
+- Enable RAG hybrid query flow (Vectorize + D1)
+
+11. M11 - Advanced Agent Tools (`todo`)
+- Implement Receipt Splitter tool (line-item extraction -> split logic)
+- Implement Warranty Sync tool (asset extraction -> time tracking)
+
 ## Operating Backlog
 
 - Define Cloudflare environment contract (`todo`)
