@@ -20,7 +20,7 @@ We will define a strict set of global categories:
 * `Health` (Medical, Pharmacy, Fitness)
 * `Other` (Misc. or Unknown)
 
-### 2.2 OpenAI Zod Schema (`src/ai/openai.ts`)
+### 2.2 OpenAI Zod Schema & Prompt Injection (`src/ai/openai.ts`)
 We will update our strict `zod` extraction schema to include both fields:
 ```typescript
 category: z.enum([
@@ -28,7 +28,13 @@ category: z.enum([
 ]).describe("The strict master category this expense falls into."),
 tags: z.array(z.string()).describe("An array of 1 to 3 relevant context tags. e.g. ['coffee', 'starbucks']. All lowercase.")
 ```
-We will update the system prompt to explicitly instruct the AI to categorize the expense strictly, and to extract highly descriptive, lowercase context tags.
+
+**Geographical Context Injection**:
+To solve the issue of the AI hallucinating or failing to categorize local vernacular (e.g., classifying "Andok's" as "Other" instead of "Food" because it lacks Philippine context), we will inject the user's onboarded locale directly into the System Prompt.
+When calling OpenAI, we will dynamically append:
+```text
+The user's local timezone is ${timezone} and their default currency is ${currency}. Use this geographical context to understand local establishments, slang, and brands (e.g., if timezone is Asia/Manila, 'Andoks' is Food. If Asia/Singapore, 'Grab' is Transport, etc).
+```
 
 ### 2.3 Database Schema (`src/db/expenses.ts`)
 We will execute a D1 Migration (`0002_add_categories.sql`):
