@@ -43,7 +43,5 @@
 
 ## Delivery Rules
 
-- Any schema or behavior change must update docs and tests in the same change.
-- Each implemented task must include happy-path tests.
-- Each implemented task must include idempotency and timezone-boundary tests where relevant.
-- Each implemented task must include clear acceptance notes in PR description.
+- All feature implementations, schema updates, and bug fixes must strictly adhere to the Spec-Driven Development process outlined in `docs/core/WORKFLOW.md`.
+- No code generation can begin without an explicitly approved `docs/specs/[feature].md` document.

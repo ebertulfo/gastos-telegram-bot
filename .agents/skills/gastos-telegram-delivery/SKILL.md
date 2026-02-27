@@ -15,12 +15,13 @@ Use this skill for any task that touches the product flow in `/Users/edrianbertu
 
 ## Execution Flow
 
-1. Confirm milestone and acceptance criteria in `docs/TASKS.md`.
-2. Design change around the ingest split: webhook path persists and acks, queue path parses and enriches.
-3. Keep all timestamps UTC at rest.
-4. Compute calendar boundaries in user timezone only at query time.
-5. Add or update tests before finalizing.
-6. Update docs (`TASKS`, `DECISIONS`, `RULES`) when behavior changes.
+1. Confirm milestone and acceptance criteria in `docs/core/TASKS.md`.
+2. **Spec-Driven Design**: Before writing any code, duplicate `docs/core/SPEC_TEMPLATE.md` into `docs/specs/[feature-name].md`.
+3. Define the Intent, explicit Data Contracts, and Constraints.
+4. **Approval Gate**: Wait for the Product Owner to explicitly approve the Spec document before proceeding.
+5. Execute the design strictly based on the approved Spec. Keep all timestamps UTC at rest.
+6. Compute calendar boundaries in user timezone only at query time.
+7. Add or update tests before finalizing.
 
 ## Non-Negotiables
 
