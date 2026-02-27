@@ -1,9 +1,15 @@
 import { useState, useEffect } from "react";
-import { fetchExpenses, fetchUserProfile } from "@/lib/api";
+import { fetchExpenses, fetchUserProfile, updateExpense } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { MessageSquare } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 
 type Period = "today" | "thisweek" | "thismonth" | "thisyear";
 
@@ -14,6 +20,12 @@ export default function DashboardScreen() {
     const [error, setError] = useState<string | null>(null);
     const [currency, setCurrency] = useState("PHP");
 
+    // Review Drawer State
+    const [selectedExpense, setSelectedExpense] = useState<any | null>(null);
+    const [editAmount, setEditAmount] = useState<string>("");
+    const [editCurrency, setEditCurrency] = useState<string>("");
+    const [saving, setSaving] = useState(false);
+
     useEffect(() => {
         // Fetch profile for default currency
         fetchUserProfile().then((profile) => {
@@ -21,7 +33,7 @@ export default function DashboardScreen() {
         }).catch(console.error);
     }, []);
 
-    useEffect(() => {
+    const loadExpenses = () => {
         setLoading(true);
         fetchExpenses(period)
             .then((data) => {
@@ -34,7 +46,33 @@ export default function DashboardScreen() {
             .finally(() => {
                 setLoading(false);
             });
+    };
+
+    useEffect(() => {
+        loadExpenses();
     }, [period]);
+
+    const handleRowClick = (expense: any) => {
+        if (!expense.needs_review) return; // Only open drawer for flagged items
+        setSelectedExpense(expense);
+        setEditAmount((expense.amount_minor / 100).toFixed(2));
+        setEditCurrency(expense.currency);
+    };
+
+    const handleSaveReview = async () => {
+        if (!selectedExpense) return;
+        setSaving(true);
+        try {
+            const amountMinor = Math.round(parseFloat(editAmount) * 100);
+            await updateExpense(selectedExpense.id, amountMinor, editCurrency);
+            setSelectedExpense(null);
+            loadExpenses(); // Refresh the list to remove the Review badge
+        } catch (err: any) {
+            setError(err.message || "Failed to save review");
+        } finally {
+            setSaving(false);
+        }
+    };
 
     const totalSpend = expenses.reduce((sum, exp) => sum + (exp.amount_minor / 100), 0);
     const reviewCount = expenses.filter(e => e.needs_review).length;
@@ -55,7 +93,7 @@ export default function DashboardScreen() {
             </Tabs>
 
             <div className="grid grid-cols-2 gap-4">
-                <Card className="bg-[var(--tg-theme-bg-color)] shadow-sm">
+                <Card className="bg-[var(--tg-theme-bg-color)] text-[var(--tg-theme-text-color)] border-[var(--tg-theme-hint-color)] border-opacity-20 shadow-sm">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium text-[var(--tg-theme-hint-color)]">
                             Spend
@@ -66,7 +104,7 @@ export default function DashboardScreen() {
                     </CardContent>
                 </Card>
 
-                <Card className="bg-[var(--tg-theme-bg-color)] shadow-sm">
+                <Card className="bg-[var(--tg-theme-bg-color)] text-[var(--tg-theme-text-color)] border-[var(--tg-theme-hint-color)] border-opacity-20 shadow-sm">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium text-[var(--tg-theme-hint-color)]">
                             Transactions
@@ -97,22 +135,84 @@ export default function DashboardScreen() {
                 ) : (
                     <div className="space-y-3">
                         {expenses.map((expense) => (
-                            <div key={expense.id} className="flex justify-between items-center bg-[var(--tg-theme-bg-color)] p-3 rounded-lg shadow-sm">
+                            <div
+                                key={expense.id}
+                                onClick={() => handleRowClick(expense)}
+                                className={`flex justify-between items-center p-3 rounded-lg shadow-sm transition-colors ${expense.needs_review ? "bg-red-50 hover:bg-red-100 cursor-pointer border border-red-200" : "bg-[var(--tg-theme-bg-color)]"}`}
+                            >
                                 <div className="flex flex-col flex-1 truncate pr-2">
-                                    <span className="font-medium truncate">{expense.text_raw || "Media Expense"}</span>
-                                    <span className="text-xs text-[var(--tg-theme-hint-color)]">
+                                    <div className={`flex items-center gap-3 overflow-hidden ${expense.needs_review ? "text-red-900" : "text-[var(--tg-theme-text-color)]"}`}>
+                                        <MessageSquare className={`w-4 h-4 flex-shrink-0 ${expense.needs_review ? "text-red-500" : "text-[var(--tg-theme-hint-color)]"}`} />
+                                        <span className="font-medium truncate">{expense.parsed_description || expense.text_raw || "Media Expense"}</span>
+                                    </div>
+                                    <span className={`text-xs ${expense.needs_review ? "text-red-700/70" : "text-[var(--tg-theme-hint-color)]"}`}>
                                         {new Date(expense.occurred_at_utc).toLocaleString()}
                                     </span>
                                 </div>
-                                <div className="flex flex-col items-end">
+                                <div className={`flex flex-col items-end ${expense.needs_review ? "text-red-900" : ""}`}>
                                     <span className="font-bold whitespace-nowrap">{expense.currency} {(expense.amount_minor / 100).toFixed(2)}</span>
-                                    {expense.needs_review && <span className="text-[10px] bg-red-100 text-red-800 px-1.5 py-0.5 rounded">Review</span>}
+                                    {expense.needs_review && <span className="text-[10px] bg-red-500 text-white px-2 py-0.5 rounded font-bold mt-1 shadow-sm">FIX</span>}
                                 </div>
                             </div>
                         ))}
                     </div>
                 )}
             </ScrollArea>
+
+            <Dialog open={!!selectedExpense} onOpenChange={(o: boolean) => !o && setSelectedExpense(null)}>
+                <DialogContent className="bg-[var(--tg-theme-bg-color)] text-[var(--tg-theme-text-color)] w-[90vw] rounded-xl max-h-[85vh] overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle>Review Extraction</DialogTitle>
+                        <DialogDescription>Verify the AI correctly parsed this expense.</DialogDescription>
+                    </DialogHeader>
+                    {selectedExpense && (
+                        <div className="py-4 space-y-4">
+                            <div className="bg-muted p-3 rounded-md text-sm border font-mono break-words">
+                                "{selectedExpense.text_raw || selectedExpense.parsed_description || "Image/Audio Upload"}"
+                            </div>
+                            <div className="flex flex-col sm:flex-row gap-4">
+                                <div className="space-y-2 flex-1">
+                                    <Label>Amount</Label>
+                                    <Input
+                                        type="number"
+                                        step="0.01"
+                                        value={editAmount}
+                                        onChange={(e) => setEditAmount(e.target.value)}
+                                        className="text-lg font-bold"
+                                    />
+                                </div>
+                                <div className="space-y-2 w-full sm:w-1/3">
+                                    <Label>Currency</Label>
+                                    <Select value={editCurrency} onValueChange={setEditCurrency}>
+                                        <SelectTrigger>
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="PHP">PHP</SelectItem>
+                                            <SelectItem value="SGD">SGD</SelectItem>
+                                            <SelectItem value="USD">USD</SelectItem>
+                                            <SelectItem value="EUR">EUR</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    <DialogFooter className="flex flex-col sm:flex-row gap-2">
+                        <Button variant="outline" onClick={() => setSelectedExpense(null)}>
+                            Cancel
+                        </Button>
+                        <Button
+                            onClick={handleSaveReview}
+                            disabled={saving}
+                            className="font-bold bg-green-600 hover:bg-green-700 text-white"
+                        >
+                            {saving ? "Saving..." : "Finalize & Save"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
         </div>
     );
 }
