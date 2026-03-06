@@ -3,6 +3,7 @@
 ## Commands
 - `npm run test` — run full test suite (vitest, 7 files, 21 tests)
 - `npm run check` — TypeScript type check only (tsc --noEmit)
+- `npm run check && npm run test` — standard verification after any change
 - `npm run dev` — local dev server (wrangler dev)
 - `npm run deploy` — deploy to Cloudflare Workers
 
@@ -11,12 +12,16 @@
 - Webhook returns 200 immediately; all heavy AI work goes to INGEST_QUEUE
 - Two queue message types: `"receipt"` (expense ingestion) and `"chat"` (semantic AI)
 - `APP_ENV` is `"prod"` in wrangler.toml; use `"development"` locally via `.dev.vars`
+- `queue.ts` is a router only — receipt logic lives in `handleReceiptMessage()`, chat routes to `runSemanticChat()`
 
 ## Code Patterns
 - Hono middleware must be `async (c, next) => { await next(); }` — sync middleware returning `c.json()` causes a TS overload error
 - `Env` type lives in `src/types.ts` — add new Cloudflare bindings/env vars there first
 - All DB queries inject `user_id` from auth context — LLM tools must never accept userId from user input
 - `response_format: { type: "json_object" }` used on all OpenAI extraction calls
+- `db/` functions take `D1Database` directly (not `Env`) — current files: expenses, users, chat-history, quotas, source-events, parse-results
+- Use `Extract<UnionType, { discriminator: "value" }>` to narrow ParseQueueMessage union for typed function args
+- Use `z.infer<typeof Schema>` to type helper return values — avoids duplicating Zod schema shapes as manual types
 
 ## Testing
 - Tests use `@cloudflare/vitest-pool-workers` — runs in a Miniflare Workers environment
