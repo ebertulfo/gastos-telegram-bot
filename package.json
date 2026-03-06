@@ -11,7 +11,6 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "grammy": "^1.38.3",
     "hono": "^4.8.5",
     "zod": "^3.24.2"
   },

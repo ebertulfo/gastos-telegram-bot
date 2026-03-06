@@ -169,11 +169,3 @@ export async function handleTelegramWebhook(c: Context<{ Bindings: Env }>) {
     200
   );
 }
-
-function getExecutionCtx(c: Context<{ Bindings: Env }>): ExecutionContext | undefined {
-  try {
-    return c.executionCtx;
-  } catch {
-    return undefined;
-  }
-}

@@ -22,7 +22,14 @@ export function createApp() {
   app.post("/webhook/telegram", handleTelegramWebhook);
   app.route("/api", apiRouter);
 
-  // ── DEBUG ENDPOINTS (remove or protect in production) ──────────────
+  // ── DEBUG ENDPOINTS (only available in development) ────────────────
+  app.use("/debug/*", async (c, next) => {
+    if (c.env.APP_ENV !== "development") {
+      return c.json({ error: "Not found" }, 404);
+    }
+    await next();
+  });
+
   app.get("/debug/vectorize-test", async (c) => {
     const query = c.req.query("q") ?? "drinks";
     const userId = parseInt(c.req.query("user_id") ?? "0");

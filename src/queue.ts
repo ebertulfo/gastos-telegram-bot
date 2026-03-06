@@ -353,7 +353,13 @@ function extractAmountMinor(text: string): number | null {
   return Math.round(parsed * 100);
 }
 
+const KNOWN_CURRENCIES = new Set([
+  "USD", "EUR", "GBP", "JPY", "AUD", "CAD", "CHF", "CNY", "HKD", "SGD",
+  "PHP", "INR", "MYR", "THB", "IDR", "VND", "KRW", "TWD", "NZD", "SEK",
+  "NOK", "DKK", "MXN", "BRL", "ARS", "ZAR", "AED", "SAR", "TRY", "RUB"
+]);
+
 function extractExplicitCurrency(text: string): string | null {
-  const match = text.toUpperCase().match(/\b[A-Z]{3}\b/);
-  return match?.[0] ?? null;
+  const words = text.toUpperCase().match(/\b[A-Z]{3}\b/g) ?? [];
+  return words.find(w => KNOWN_CURRENCIES.has(w)) ?? null;
 }

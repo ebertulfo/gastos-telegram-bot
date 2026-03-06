@@ -4,6 +4,21 @@ import { getRecentChatHistory, insertChatMessage } from "../db/chat-history";
 import { checkAndRefreshTokenQuota, incrementTokenUsage } from "../db/quotas";
 import { sendTelegramChatMessage, sendChatAction } from "../telegram/messages";
 
+type OpenAIToolCall = {
+    id: string;
+    function: { name: string; arguments: string };
+};
+
+type OpenAIChatResponse = {
+    choices: Array<{
+        message: {
+            content: string | null;
+            tool_calls?: OpenAIToolCall[];
+        };
+    }>;
+    usage?: { total_tokens: number };
+};
+
 export type ParsedIntent = "log" | "question" | "unclear";
 
 /**
@@ -40,7 +55,7 @@ If the message is ambiguous, conversational, or doesn't clearly fit either (e.g.
     });
 
     if (!response.ok) return "log";
-    const data = await response.json() as any;
+    const data = await response.json() as OpenAIChatResponse;
 
     if (data.usage?.total_tokens) {
         // Fire and forget quota increment so it doesn't block the hot classification path
@@ -82,7 +97,7 @@ export async function runSemanticChat(
     // 2. Fetch truncated short-term memory (Guardrail: Max 10 messages to prevent token explosion)
     const history = await getRecentChatHistory(env.DB, userId, 10);
 
-    const messages: any[] = [
+    const messages: Array<Record<string, unknown>> = [
         {
             role: "system",
             content: `You are Gastos, a proactive, intelligent financial assistant. You help the user understand their spending.
@@ -117,7 +132,7 @@ RULES:
     console.log(`[DEBUG:REQUEST] Sending to OpenAI`, JSON.stringify({
         model: requestPayload.model,
         messageCount: messages.length,
-        systemPrompt: messages[0]?.content?.substring(0, 200) + "...",
+        systemPrompt: (messages[0]?.content as string | undefined)?.substring(0, 200) + "...",
         userMessage: messages[messages.length - 1]?.content,
         toolCount: requestPayload.tools.length
     }));
@@ -136,7 +151,7 @@ RULES:
         return;
     }
 
-    const data = await response.json() as any;
+    const data = await response.json() as OpenAIChatResponse;
     if (data.usage?.total_tokens) {
         await incrementTokenUsage(env.DB, userId, data.usage.total_tokens);
     }
@@ -192,7 +207,7 @@ RULES:
             return;
         }
 
-        const finalData = await finalResponse.json() as any;
+        const finalData = await finalResponse.json() as OpenAIChatResponse;
         if (finalData.usage?.total_tokens) {
             await incrementTokenUsage(env.DB, userId, finalData.usage.total_tokens);
         }
@@ -207,10 +222,7 @@ RULES:
             return;
         }
 
-        // Never persist poisoned content
-        if (!looksLikeLeakedToolCall(finalContent)) {
-            await insertChatMessage(env.DB, userId, "assistant", finalContent);
-        }
+        await insertChatMessage(env.DB, userId, "assistant", finalContent);
         await sendTelegramChatMessage(env, telegramId, finalContent);
         return;
     }
@@ -226,9 +238,7 @@ RULES:
             return;
         }
 
-        if (!looksLikeLeakedToolCall(content)) {
-            await insertChatMessage(env.DB, userId, "assistant", content);
-        }
+        await insertChatMessage(env.DB, userId, "assistant", content);
         await sendTelegramChatMessage(env, telegramId, content);
     }
 }
