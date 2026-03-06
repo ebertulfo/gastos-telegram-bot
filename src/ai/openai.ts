@@ -5,12 +5,18 @@ const OpenAIResponseSchema = z.object({
   amount: z.number().nullable().optional(),
   currency: z.string().nullable().optional(),
   description: z.string().nullable().optional(),
+  category: z.enum([
+    "Food", "Transport", "Housing", "Shopping", "Entertainment", "Health", "Other"
+  ]).nullable().optional(),
+  tags: z.array(z.string()).nullable().optional(),
   confidence: z.number().nullable().optional()
 });
 
 export type OpenAIExtraction = {
   amountMinor: number | null;
   currency: string | null;
+  category: string;
+  tags: string[];
   confidence: number;
   needsReview: boolean;
   metadata: Record<string, unknown>;
@@ -47,14 +53,104 @@ export async function transcribeR2Audio(env: Env, r2ObjectKey: string): Promise<
   return json.text?.trim() || null;
 }
 
+export async function generateEmbedding(env: Env, text: string): Promise<number[]> {
+  if (!env.OPENAI_API_KEY || !text.trim()) {
+    return [];
+  }
+
+  const response = await fetch("https://api.openai.com/v1/embeddings", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.OPENAI_API_KEY}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: "text-embedding-3-small",
+      input: text
+    })
+  });
+
+  if (!response.ok) {
+    console.error("Embedding failed", await response.text());
+    return [];
+  }
+
+  const json = (await response.json()) as any;
+  if (json.data && json.data.length > 0) {
+    return json.data[0].embedding;
+  }
+  return [];
+}
+
+export async function getHistoricalContext(env: Env, userId: number, text: string): Promise<string> {
+  const embedding = await generateEmbedding(env, text);
+  if (!embedding.length) {
+    return "";
+  }
+
+  try {
+    const results = await env.VECTORIZE.query(embedding, { topK: 3, filter: { user_id: userId } });
+    if (!results.matches || results.matches.length === 0) {
+      return "";
+    }
+
+    let context = "\nHere are 3 of the user's most similar historical expenses. You MUST analyze these past decisions and align your current extraction (especially the Category and Tags) to match their historical precedent:\n";
+    for (const match of results.matches) {
+      if (match.metadata) {
+        const m = match.metadata as any;
+        context += `- Raw Text: "${m.raw_text}" -> Parsed as: [${m.category}]. Tags: ${m.tags}.\n`;
+      }
+    }
+    return context;
+  } catch (error) {
+    console.error("Vectorize query failed", error);
+    return "";
+  }
+}
+
+/**
+ * Semantic search for expenses via Vectorize.
+ * Embeds the query text and returns matching expense source_event IDs.
+ */
+export async function searchExpensesBySemantic(
+  env: Env,
+  userId: number,
+  query: string,
+  topK: number = 20
+): Promise<number[]> {
+  const embedding = await generateEmbedding(env, query);
+  if (!embedding.length) return [];
+
+  try {
+    const results = await env.VECTORIZE.query(embedding, {
+      topK,
+      filter: { user_id: userId },
+      returnMetadata: "all"
+    });
+
+    if (!results.matches || results.matches.length === 0) return [];
+
+    return results.matches
+      .filter(m => m.metadata?.expense_id != null)
+      .map(m => m.metadata!.expense_id as number);
+  } catch (error) {
+    console.error("Vectorize semantic search failed", error);
+    return [];
+  }
+}
+
 export async function extractAmountCurrencyFromText(
   env: Env,
   text: string,
-  userCurrency: string | null
+  userCurrency: string | null,
+  userTimezone: string | null,
+  historicalContext: string = ""
 ): Promise<OpenAIExtraction | null> {
   if (!env.OPENAI_API_KEY) {
     return null;
   }
+
+  const localeContext = `The user's local timezone is ${userTimezone ?? "unknown"} and their default currency is ${userCurrency ?? "unknown"}. Use this geographical context to understand local establishments, slang, and brands (e.g., if timezone is Asia/Manila, 'Andoks' is Food. If Asia/Singapore, 'Grab' is Transport, etc).`;
 
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -71,7 +167,7 @@ export async function extractAmountCurrencyFromText(
             {
               type: "text",
               text:
-                `Extract the total amount, currency, and a short description from this transcribed message. The user might spell out numbers (e.g. "five dollars"). Convert it to digits. The user's default currency is ${userCurrency ?? "unknown"}. If the user says a generic currency word like "dollars" or "$", assume it means their default currency. Return strict JSON with keys: amount (number or null, e.g. 5.0 for five dollars), currency (3-letter ISO code or null), description (string, max 3 words, e.g. "Coffee" or "Food" or "Burger King"), confidence (0-1).`
+                `${localeContext}${historicalContext}\nExtract the total amount, currency, a short description, category, and tags from this transcribed message. The user might spell out numbers (e.g. "five dollars"). Convert it to digits. If the user says a generic currency word like "dollars" or "$", assume it means their default currency. CRITICAL: If the message contains a standalone number (e.g. "13 grab", "lunch 5.50", "20"), YOU MUST extract that number as the amount even if there is no explicit currency symbol present.\nReturn strict JSON with keys: amount (number or null), currency (3-letter ISO code or null), description (string, max 3 words), category (MUST be exactly one of: Food, Transport, Housing, Shopping, Entertainment, Health, Other), tags (array of 1-3 lowercase string contexts, e.g. ["coffee", "starbucks"]), confidence (0-1).`
             },
             {
               type: "text",
@@ -103,18 +199,22 @@ export async function extractAmountCurrencyFromText(
     return null;
   }
 
-  const { amount: rawAmount, currency: rawCurrency, description: rawDescription, confidence: rawConfidence } = validationResult.data;
+  const { amount: rawAmount, currency: rawCurrency, description: rawDescription, category: rawCategory, tags: rawTags, confidence: rawConfidence } = validationResult.data;
 
   const amountMinor = typeof rawAmount === "number" && Number.isFinite(rawAmount) ? Math.round(rawAmount * 100) : null;
   const currency = typeof rawCurrency === "string" && /^[A-Z]{3}$/.test(rawCurrency.toUpperCase()) ? rawCurrency.toUpperCase() : null;
   const description = typeof rawDescription === "string" ? rawDescription.trim() : null;
+  const category = typeof rawCategory === "string" ? rawCategory : "Other";
+  const tags = Array.isArray(rawTags) ? rawTags : [];
   const confidence = typeof rawConfidence === "number" && Number.isFinite(rawConfidence) ? clamp(rawConfidence, 0, 1) : 0.5;
 
   return {
     amountMinor,
     currency,
+    category,
+    tags,
     confidence,
-    needsReview: confidence < 0.9 || amountMinor === null || currency === null,
+    needsReview: confidence < 0.9 || amountMinor === null || currency === null || category === "Other",
     metadata: {
       source: "openai_text",
       originalText: text,
@@ -126,7 +226,9 @@ export async function extractAmountCurrencyFromText(
 export async function extractAmountCurrencyFromR2Image(
   env: Env,
   r2ObjectKey: string,
-  userCurrency: string | null
+  userCurrency: string | null,
+  userTimezone: string | null,
+  historicalContext: string = ""
 ): Promise<OpenAIExtraction | null> {
   const object = await env.MEDIA_BUCKET.get(r2ObjectKey);
   if (!object) {
@@ -147,6 +249,8 @@ export async function extractAmountCurrencyFromR2Image(
   const base64 = toBase64(bytes);
   const dataUrl = `data:${mime};base64,${base64}`;
 
+  const localeContext = `The user's local timezone is ${userTimezone ?? "unknown"} and their default currency is ${userCurrency ?? "unknown"}. Use this geographical context to understand local establishments, slang, and brands (e.g., if timezone is Asia/Manila, 'Andoks' is Food. If Asia/Singapore, 'Grab' is Transport, etc).`;
+
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -162,7 +266,7 @@ export async function extractAmountCurrencyFromR2Image(
             {
               type: "text",
               text:
-                `Extract the total amount, currency, and a short description from this receipt image. The user's default currency is ${userCurrency ?? "unknown"}. If the receipt shows a generic symbol like "$" or "dollars", assume it means their default currency. Return strict JSON with keys: amount (number or null, e.g. 15.50), currency (3-letter ISO code or null), description (string, max 3 words, e.g. "Food" or "Groceries" or the merchant name), confidence (0-1).`
+                `${localeContext}${historicalContext}\nExtract the total amount, currency, a short description, category, and tags from this receipt image. If the receipt shows a generic symbol like "$" or "dollars", assume it means their default currency. CRITICAL: If the receipt only has a prominent number without a currency symbol, YOU MUST extract that number as the amount.\nReturn strict JSON with keys: amount (number or null), currency (3-letter ISO code or null), description (string, max 3 words), category (MUST be exactly one of: Food, Transport, Housing, Shopping, Entertainment, Health, Other), tags (array of 1-3 lowercase string contexts, e.g. ["coffee", "starbucks"]), confidence (0-1).`
             },
             {
               type: "image_url",
@@ -199,18 +303,22 @@ export async function extractAmountCurrencyFromR2Image(
     return null;
   }
 
-  const { amount: rawAmount, currency: rawCurrency, description: rawDescription, confidence: rawConfidence } = validationResult.data;
+  const { amount: rawAmount, currency: rawCurrency, description: rawDescription, category: rawCategory, tags: rawTags, confidence: rawConfidence } = validationResult.data;
 
   const amountMinor = typeof rawAmount === "number" && Number.isFinite(rawAmount) ? Math.round(rawAmount * 100) : null;
   const currency = typeof rawCurrency === "string" && /^[A-Z]{3}$/.test(rawCurrency.toUpperCase()) ? rawCurrency.toUpperCase() : null;
   const description = typeof rawDescription === "string" ? rawDescription.trim() : null;
+  const category = typeof rawCategory === "string" ? rawCategory : "Other";
+  const tags = Array.isArray(rawTags) ? rawTags : [];
   const confidence = typeof rawConfidence === "number" && Number.isFinite(rawConfidence) ? clamp(rawConfidence, 0, 1) : 0.5;
 
   return {
     amountMinor,
     currency,
+    category,
+    tags,
     confidence,
-    needsReview: confidence < 0.9 || amountMinor === null || currency === null,
+    needsReview: confidence < 0.9 || amountMinor === null || currency === null || category === "Other",
     metadata: {
       source: "openai_vision",
       r2ObjectKey,
