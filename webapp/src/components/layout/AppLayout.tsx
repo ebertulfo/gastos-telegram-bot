@@ -4,8 +4,8 @@ import WebApp from "@twa-dev/sdk";
 
 interface AppLayoutProps {
     children: React.ReactNode;
-    activeTab: "dashboard" | "review";
-    setActiveTab: (tab: "dashboard" | "review") => void;
+    activeTab: "dashboard" | "analytics" | "review";
+    setActiveTab: (tab: "dashboard" | "analytics" | "review") => void;
 }
 
 export default function AppLayout({ children, activeTab, setActiveTab }: AppLayoutProps) {
@@ -14,6 +14,21 @@ export default function AppLayout({ children, activeTab, setActiveTab }: AppLayo
         WebApp.ready();
         // Expand to full height on mobile
         WebApp.expand();
+
+        const updateTheme = () => {
+            if (WebApp.colorScheme === "dark") {
+                document.documentElement.classList.add("dark");
+            } else {
+                document.documentElement.classList.remove("dark");
+            }
+        };
+
+        updateTheme();
+        WebApp.onEvent("themeChanged", updateTheme);
+
+        return () => {
+            WebApp.offEvent("themeChanged", updateTheme);
+        };
     }, []);
 
     return (
@@ -32,8 +47,19 @@ export default function AppLayout({ children, activeTab, setActiveTab }: AppLayo
                         : "text-[var(--tg-theme-hint-color)]"
                         }`}
                 >
-                    <PieChartIcon className="w-6 h-6 mb-1" />
+                    <ListIcon className="w-6 h-6 mb-1" />
                     <span className="text-xs font-medium">Dashboard</span>
+                </button>
+
+                <button
+                    onClick={() => setActiveTab("analytics")}
+                    className={`flex flex-col items-center justify-center w-full h-full transition-colors ${activeTab === "analytics"
+                        ? "text-[var(--tg-theme-button-color)]"
+                        : "text-[var(--tg-theme-hint-color)]"
+                        }`}
+                >
+                    <PieChartIcon className="w-6 h-6 mb-1" />
+                    <span className="text-xs font-medium">Analytics</span>
                 </button>
 
                 <button
@@ -45,7 +71,6 @@ export default function AppLayout({ children, activeTab, setActiveTab }: AppLayo
                 >
                     <div className="relative">
                         <ListIcon className="w-6 h-6 mb-1" />
-                        {/* We can add a red notification dot here in future if review items exist */}
                     </div>
                     <span className="text-xs font-medium">Review Queue</span>
                 </button>

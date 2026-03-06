@@ -13,6 +13,9 @@ type ExpenseWithDetails = {
     text_raw: string | null;
     r2_object_key: string | null;
     needs_review_reason: boolean;
+    parsed_description: string | null;
+    category: string;
+    tags: string;
 };
 
 // Helper to get authentication header
@@ -44,11 +47,11 @@ export async function fetchExpenses(period: "today" | "thisweek" | "thismonth" |
     return json.data;
 }
 
-export async function updateExpense(id: number, amount_minor: number, currency: string) {
+export async function updateExpense(id: number, amount_minor: number, currency: string, category?: string) {
     const res = await fetch(`${API_BASE_URL}/expenses/${id}`, {
         method: "PUT",
         headers: getAuthHeaders(),
-        body: JSON.stringify({ amount_minor, currency })
+        body: JSON.stringify({ amount_minor, currency, category })
     });
     if (!res.ok) throw new Error(await res.text());
     return res.json();

@@ -24,6 +24,7 @@ export default function DashboardScreen() {
     const [selectedExpense, setSelectedExpense] = useState<any | null>(null);
     const [editAmount, setEditAmount] = useState<string>("");
     const [editCurrency, setEditCurrency] = useState<string>("");
+    const [editCategory, setEditCategory] = useState<string>("");
     const [saving, setSaving] = useState(false);
 
     useEffect(() => {
@@ -57,6 +58,7 @@ export default function DashboardScreen() {
         setSelectedExpense(expense);
         setEditAmount((expense.amount_minor / 100).toFixed(2));
         setEditCurrency(expense.currency);
+        setEditCategory(expense.category || "Other");
     };
 
     const handleSaveReview = async () => {
@@ -64,7 +66,7 @@ export default function DashboardScreen() {
         setSaving(true);
         try {
             const amountMinor = Math.round(parseFloat(editAmount) * 100);
-            await updateExpense(selectedExpense.id, amountMinor, editCurrency);
+            await updateExpense(selectedExpense.id, amountMinor, editCurrency, editCategory);
             setSelectedExpense(null);
             loadExpenses(); // Refresh the list to remove the Review badge
         } catch (err: any) {
@@ -143,7 +145,34 @@ export default function DashboardScreen() {
                                 <div className="flex flex-col flex-1 truncate pr-2">
                                     <div className={`flex items-center gap-3 overflow-hidden ${expense.needs_review ? "text-red-900" : "text-[var(--tg-theme-text-color)]"}`}>
                                         <MessageSquare className={`w-4 h-4 flex-shrink-0 ${expense.needs_review ? "text-red-500" : "text-[var(--tg-theme-hint-color)]"}`} />
-                                        <span className="font-medium truncate">{expense.parsed_description || expense.text_raw || "Media Expense"}</span>
+                                        <div className="flex flex-col">
+                                            <span className="font-medium truncate">{expense.parsed_description || expense.text_raw || "Media Expense"}</span>
+
+                                            {/* M7: Render Category and Tags */}
+                                            <div className="flex flex-wrap gap-1 mt-1">
+                                                {expense.category && (
+                                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                                                        {expense.category}
+                                                    </span>
+                                                )}
+
+                                                {(() => {
+                                                    try {
+                                                        const tagsArray = JSON.parse(expense.tags || "[]");
+                                                        if (Array.isArray(tagsArray) && tagsArray.length > 0) {
+                                                            return tagsArray.map((tag: string, i: number) => (
+                                                                <span key={i} className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                                                                    #{tag}
+                                                                </span>
+                                                            ));
+                                                        }
+                                                    } catch (e) {
+                                                        // Ignore parse errors on empty tags
+                                                    }
+                                                    return null;
+                                                })()}
+                                            </div>
+                                        </div>
                                     </div>
                                     <span className={`text-xs ${expense.needs_review ? "text-red-700/70" : "text-[var(--tg-theme-hint-color)]"}`}>
                                         {new Date(expense.occurred_at_utc).toLocaleString()}
@@ -195,6 +224,24 @@ export default function DashboardScreen() {
                                         </SelectContent>
                                     </Select>
                                 </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label>Category</Label>
+                                <Select value={editCategory} onValueChange={setEditCategory}>
+                                    <SelectTrigger>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="Food">Food</SelectItem>
+                                        <SelectItem value="Transport">Transport</SelectItem>
+                                        <SelectItem value="Housing">Housing</SelectItem>
+                                        <SelectItem value="Shopping">Shopping</SelectItem>
+                                        <SelectItem value="Entertainment">Entertainment</SelectItem>
+                                        <SelectItem value="Health">Health</SelectItem>
+                                        <SelectItem value="Other">Other</SelectItem>
+                                    </SelectContent>
+                                </Select>
                             </div>
                         </div>
                     )}

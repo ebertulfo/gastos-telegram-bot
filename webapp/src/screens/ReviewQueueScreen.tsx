@@ -2,11 +2,13 @@ import { useState, useEffect } from "react";
 import { fetchExpenses, updateExpense, deleteExpense } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { MessageSquare } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export default function ReviewQueueScreen() {
     const [expenses, setExpenses] = useState<any[]>([]);
@@ -15,6 +17,7 @@ export default function ReviewQueueScreen() {
     const [editingExpense, setEditingExpense] = useState<any | null>(null);
     const [editAmount, setEditAmount] = useState("");
     const [editCurrency, setEditCurrency] = useState("");
+    const [editCategory, setEditCategory] = useState("");
     const [submitting, setSubmitting] = useState(false);
 
     const loadQueue = () => {
@@ -23,7 +26,7 @@ export default function ReviewQueueScreen() {
         // In production, the backend might have a dedicated /review endpoint.
         fetchExpenses("thismonth")
             .then((data) => {
-                setExpenses(data.filter(e => e.needs_review_reason));
+                setExpenses(data.filter(e => e.status === "needs_review"));
             })
             .catch(console.error)
             .finally(() => setLoading(false));
@@ -37,6 +40,7 @@ export default function ReviewQueueScreen() {
         setEditingExpense(expense);
         setEditAmount((expense.amount_minor / 100).toString());
         setEditCurrency(expense.currency);
+        setEditCategory(expense.category || "Other");
     };
 
     const handleSave = async () => {
@@ -44,7 +48,7 @@ export default function ReviewQueueScreen() {
         setSubmitting(true);
         try {
             const minor = Math.round(parseFloat(editAmount) * 100);
-            await updateExpense(editingExpense.id, minor, editCurrency);
+            await updateExpense(editingExpense.id, minor, editCurrency, editCategory);
             setEditingExpense(null);
             loadQueue(); // Refresh the list
         } catch (e) {
@@ -91,12 +95,15 @@ export default function ReviewQueueScreen() {
                         {expenses.map((expense) => (
                             <Card
                                 key={expense.id}
-                                className="bg-[var(--tg-theme-bg-color)] shadow-sm cursor-pointer hover:bg-[var(--tg-theme-secondary-bg-color)] transition-colors"
+                                className="bg-[var(--tg-theme-bg-color)] text-[var(--tg-theme-text-color)] border-[var(--tg-theme-hint-color)] border-opacity-20 shadow-sm cursor-pointer hover:bg-[var(--tg-theme-secondary-bg-color)] transition-colors"
                                 onClick={() => handleEditClick(expense)}
                             >
                                 <CardContent className="p-4 flex justify-between items-center">
                                     <div className="flex flex-col truncate pr-4">
-                                        <span className="font-semibold truncate">{expense.text_raw || "Media / Voice Note"}</span>
+                                        <div className="flex items-center gap-3 overflow-hidden text-[var(--tg-theme-text-color)]">
+                                            <MessageSquare className="w-4 h-4 text-orange-500 flex-shrink-0" />
+                                            <span className="font-medium truncate">{expense.parsed_description || expense.text_raw || "Media Expense"}</span>
+                                        </div>
                                         <span className="text-xs text-[var(--tg-theme-hint-color)] mt-1">
                                             {new Date(expense.occurred_at_utc).toLocaleString()}
                                         </span>
@@ -146,6 +153,28 @@ export default function ReviewQueueScreen() {
                                 className="col-span-3 bg-[var(--tg-theme-secondary-bg-color)] border-[var(--tg-theme-hint-color)] text-[var(--tg-theme-text-color)]"
                                 maxLength={3}
                             />
+                        </div>
+
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label className="text-right font-medium text-[var(--tg-theme-text-color)]">
+                                Category
+                            </Label>
+                            <div className="col-span-3">
+                                <Select value={editCategory} onValueChange={setEditCategory}>
+                                    <SelectTrigger className="bg-[var(--tg-theme-secondary-bg-color)] border-[var(--tg-theme-hint-color)] text-[var(--tg-theme-text-color)]">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="Food">Food</SelectItem>
+                                        <SelectItem value="Transport">Transport</SelectItem>
+                                        <SelectItem value="Housing">Housing</SelectItem>
+                                        <SelectItem value="Shopping">Shopping</SelectItem>
+                                        <SelectItem value="Entertainment">Entertainment</SelectItem>
+                                        <SelectItem value="Health">Health</SelectItem>
+                                        <SelectItem value="Other">Other</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
                         </div>
                     </div>
 
