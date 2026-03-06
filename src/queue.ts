@@ -1,12 +1,14 @@
 import { extractAmountCurrencyFromR2Image, extractAmountCurrencyFromText, transcribeR2Audio, getHistoricalContext, generateEmbedding } from "./ai/openai";
 import { runSemanticChat } from "./ai/agent";
 import { sendTelegramChatMessage } from "./telegram/messages";
+import { getSourceEventForQueue } from "./db/source-events";
+import { insertParseResult } from "./db/parse-results";
+import { insertExpense } from "./db/expenses";
 import type { Env, ParseQueueMessage } from "./types";
 
 export async function handleParseQueueBatch(batch: MessageBatch<ParseQueueMessage>, env: Env, ctx: ExecutionContext) {
   for (const message of batch.messages) {
     try {
-      // M14: Asynchronous Semantic AI Chat router
       if (message.body.type === "chat") {
         await runSemanticChat(
           env,
@@ -16,125 +18,9 @@ export async function handleParseQueueBatch(batch: MessageBatch<ParseQueueMessag
           message.body.tier,
           message.body.text
         );
-        message.ack();
-        continue;
-      }
-
-      // Fallback: Receipt Data Ingestion Router (type === "receipt")
-      const sourceEvent = await env.DB.prepare(
-        `SELECT se.id, se.user_id, se.message_type, se.text_raw, se.r2_object_key, se.received_at_utc, u.currency AS user_currency, u.timezone AS user_timezone, u.telegram_user_id AS telegram_id
-         FROM source_events se
-         LEFT JOIN users u ON u.id = se.user_id
-         WHERE se.id = ?`
-      )
-        .bind(message.body.sourceEventId)
-        .first<{
-          id: number;
-          user_id: number;
-          message_type: "text" | "photo" | "voice";
-          text_raw: string | null;
-          r2_object_key: string | null;
-          received_at_utc: string;
-          user_currency: string | null;
-          user_timezone: string | null;
-          telegram_id: number | null;
-        }>();
-
-      if (!sourceEvent) {
-        throw new Error(`Source event not found: ${message.body.sourceEventId}`);
-      }
-
-      const extraction = await extractForSourceEvent(env, sourceEvent, message.body.r2ObjectKey);
-
-      await env.DB.prepare(
-        `INSERT INTO parse_results (
-           source_event_id,
-           parser_version,
-           parsed_json,
-           confidence,
-           needs_review,
-           created_at_utc
-         ) VALUES (?, ?, ?, ?, ?, ?)`
-      )
-        .bind(
-          sourceEvent.id,
-          sourceEvent.message_type === "text" ? "v1-text-parser" : "v1-multimodal-parser",
-          JSON.stringify(extraction.parsedJson),
-          extraction.confidence,
-          extraction.needsReview ? 1 : 0,
-          new Date().toISOString()
-        )
-        .run();
-
-      if (extraction.amountMinor !== null && extraction.currency) {
-        await env.DB.prepare(
-          `INSERT INTO expenses (
-             user_id,
-             source_event_id,
-             amount_minor,
-             currency,
-             category,
-             tags,
-             occurred_at_utc,
-             status,
-             created_at_utc
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-           ON CONFLICT(source_event_id) DO NOTHING`
-        )
-          .bind(
-            sourceEvent.user_id,
-            sourceEvent.id,
-            extraction.amountMinor,
-            extraction.currency,
-            extraction.category ?? "Other",
-            JSON.stringify(extraction.tags ?? []),
-            sourceEvent.received_at_utc,
-            extraction.needsReview ? "needs_review" : "final",
-            new Date().toISOString()
-          )
-          .run();
-
-        // M1: User Feedback - Send Telegram response FIRST so the UI feels instantly responsive
-        if (sourceEvent.telegram_id) {
-          const formattedMinor = (extraction.amountMinor / 100).toFixed(2);
-          let replyText = `✅ Logged: ${extraction.currency} ${formattedMinor}`;
-          if (extraction.needsReview) {
-            replyText += `\n⚠️ Marked for review (confidence: ${Math.round(extraction.confidence * 100)}%)`;
-          }
-          await sendTelegramChatMessage(env, sourceEvent.telegram_id, replyText);
-        }
-
-        // M9: Vector Memory Sync - Move the heavy AI generation to a background thread
-        if (!extraction.needsReview && sourceEvent.text_raw && sourceEvent.text_raw.trim() !== "") {
-          ctx.waitUntil((async () => {
-            try {
-              const embedding = await generateEmbedding(env, sourceEvent.text_raw!);
-              if (embedding.length > 0) {
-                await env.VECTORIZE.upsert([{
-                  id: `expense_${sourceEvent.id}`,
-                  values: embedding,
-                  metadata: {
-                    user_id: sourceEvent.user_id,
-                    expense_id: sourceEvent.id,
-                    category: extraction.category ?? "Other",
-                    tags: JSON.stringify(extraction.tags ?? []),
-                    currency: extraction.currency ?? "",
-                    raw_text: sourceEvent.text_raw ?? ""
-                  }
-                }]);
-              }
-            } catch (err) {
-              console.error("Failed to sync embedding to Vectorize:", err);
-            }
-          })());
-        }
       } else {
-        if (sourceEvent.telegram_id) {
-          const reason = String(extraction.parsedJson.reason || "unrecognized format");
-          await sendTelegramChatMessage(env, sourceEvent.telegram_id, `❌ Failed to extract amount: ${reason}`);
-        }
+        await handleReceiptMessage(env, ctx, message.body);
       }
-
       message.ack();
     } catch (error) {
       const errorPayload = message.body.type === "receipt"
@@ -146,6 +32,81 @@ export async function handleParseQueueBatch(batch: MessageBatch<ParseQueueMessag
         error: error instanceof Error ? error.message : String(error)
       });
       message.retry();
+    }
+  }
+}
+
+async function handleReceiptMessage(
+  env: Env,
+  ctx: ExecutionContext,
+  body: Extract<ParseQueueMessage, { type: "receipt" }>
+): Promise<void> {
+  const sourceEvent = await getSourceEventForQueue(env.DB, body.sourceEventId);
+  if (!sourceEvent) {
+    throw new Error(`Source event not found: ${body.sourceEventId}`);
+  }
+
+  const extraction = await extractForSourceEvent(env, sourceEvent, body.r2ObjectKey);
+
+  await insertParseResult(
+    env.DB,
+    sourceEvent.id,
+    sourceEvent.message_type === "text" ? "v1-text-parser" : "v1-multimodal-parser",
+    extraction.parsedJson,
+    extraction.confidence,
+    extraction.needsReview
+  );
+
+  if (extraction.amountMinor !== null && extraction.currency) {
+    await insertExpense(
+      env.DB,
+      sourceEvent.user_id,
+      sourceEvent.id,
+      extraction.amountMinor,
+      extraction.currency,
+      extraction.category ?? "Other",
+      extraction.tags ?? [],
+      sourceEvent.received_at_utc,
+      extraction.needsReview
+    );
+
+    if (sourceEvent.telegram_id) {
+      const formattedMinor = (extraction.amountMinor / 100).toFixed(2);
+      let replyText = `✅ Logged: ${extraction.currency} ${formattedMinor}`;
+      if (extraction.needsReview) {
+        replyText += `\n⚠️ Marked for review (confidence: ${Math.round(extraction.confidence * 100)}%)`;
+      }
+      await sendTelegramChatMessage(env, sourceEvent.telegram_id, replyText);
+    }
+
+    // M9: Vector Memory Sync - background thread to avoid blocking the queue response
+    if (!extraction.needsReview && sourceEvent.text_raw && sourceEvent.text_raw.trim() !== "") {
+      ctx.waitUntil((async () => {
+        try {
+          const embedding = await generateEmbedding(env, sourceEvent.text_raw!);
+          if (embedding.length > 0) {
+            await env.VECTORIZE.upsert([{
+              id: `expense_${sourceEvent.id}`,
+              values: embedding,
+              metadata: {
+                user_id: sourceEvent.user_id,
+                expense_id: sourceEvent.id,
+                category: extraction.category ?? "Other",
+                tags: JSON.stringify(extraction.tags ?? []),
+                currency: extraction.currency ?? "",
+                raw_text: sourceEvent.text_raw ?? ""
+              }
+            }]);
+          }
+        } catch (err) {
+          console.error("Failed to sync embedding to Vectorize:", err);
+        }
+      })());
+    }
+  } else {
+    if (sourceEvent.telegram_id) {
+      const reason = String(extraction.parsedJson.reason || "unrecognized format");
+      await sendTelegramChatMessage(env, sourceEvent.telegram_id, `❌ Failed to extract amount: ${reason}`);
     }
   }
 }

@@ -107,6 +107,33 @@ export async function setSourceEventR2ObjectKey(env: Env, sourceEventId: number,
     .run();
 }
 
+export type SourceEventForQueue = {
+  id: number;
+  user_id: number;
+  message_type: "text" | "photo" | "voice";
+  text_raw: string | null;
+  r2_object_key: string | null;
+  received_at_utc: string;
+  user_currency: string | null;
+  user_timezone: string | null;
+  telegram_id: number | null;
+};
+
+export async function getSourceEventForQueue(
+  db: D1Database,
+  sourceEventId: number
+): Promise<SourceEventForQueue | null> {
+  return db.prepare(
+    `SELECT se.id, se.user_id, se.message_type, se.text_raw, se.r2_object_key, se.received_at_utc,
+            u.currency AS user_currency, u.timezone AS user_timezone, u.telegram_user_id AS telegram_id
+     FROM source_events se
+     LEFT JOIN users u ON u.id = se.user_id
+     WHERE se.id = ?`
+  )
+    .bind(sourceEventId)
+    .first<SourceEventForQueue>();
+}
+
 function isUniqueViolation(error: unknown): boolean {
   if (!(error instanceof Error)) {
     return false;

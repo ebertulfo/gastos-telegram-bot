@@ -94,6 +94,38 @@ export async function updateExpense(
     return result.meta.changes > 0;
 }
 
+export async function insertExpense(
+  db: D1Database,
+  userId: number,
+  sourceEventId: number,
+  amountMinor: number,
+  currency: string,
+  category: string,
+  tags: string[],
+  occurredAtUtc: string,
+  needsReview: boolean
+): Promise<void> {
+  await db.prepare(
+    `INSERT INTO expenses (
+       user_id, source_event_id, amount_minor, currency,
+       category, tags, occurred_at_utc, status, created_at_utc
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(source_event_id) DO NOTHING`
+  )
+    .bind(
+      userId,
+      sourceEventId,
+      amountMinor,
+      currency,
+      category,
+      JSON.stringify(tags),
+      occurredAtUtc,
+      needsReview ? "needs_review" : "final",
+      new Date().toISOString()
+    )
+    .run();
+}
+
 export async function deleteExpense(env: Env, userId: number, expenseId: number): Promise<boolean> {
     // SQLite doesn't natively support ON DELETE CASCADE unless enabled, 
     // but since Gastos appends rows, we just delete the expense itself.
