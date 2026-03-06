@@ -80,7 +80,9 @@ function createOnboardingEnv(initialUser: UserRow | null) {
     TELEGRAM_BOT_TOKEN: "token",
     DB: { prepare } as unknown as D1Database,
     MEDIA_BUCKET: { put } as unknown as R2Bucket,
-    INGEST_QUEUE: { send } as unknown as Queue
+    VECTORIZE: {} as unknown as VectorizeIndex,
+    RATE_LIMITER: {} as unknown as KVNamespace,
+    INGEST_QUEUE: { send } as unknown as Queue<any>
   };
 
   return { env, send };
@@ -188,8 +190,8 @@ describe("onboarding and command handling", () => {
 
     const [, requestInit] = fetchMock.mock.calls[0];
     const body = JSON.parse(String(requestInit?.body ?? "{}")) as { text?: string };
-    expect(body.text).toContain("Total: SGD 1,234.56");
-    expect(body.text).toContain("Count: (18 expenses)");
+    expect(body.text).toContain("Total: SGD 1,234\\.56");
+    expect(body.text).toContain("Count: \\(18 expenses\\)");
     expect(body.text).toContain("Needs review: 3 need confirmation");
 
     fetchMock.mockRestore();

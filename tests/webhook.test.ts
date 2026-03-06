@@ -1,6 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
 import { createApp } from "../src/app";
+import * as queue from "../src/queue";
+import * as agent from "../src/ai/agent";
+import * as rateLimiter from "../src/rate-limiter";
 import type { Env } from "../src/types";
+
+vi.mock("../src/ai/agent", () => ({
+  classifyIntent: vi.fn(),
+  runSemanticChat: vi.fn()
+}));
+
+vi.mock("../src/rate-limiter", () => ({
+  checkRateLimit: vi.fn()
+}));
 
 type MockDbOptions = {
   duplicate?: boolean;
@@ -77,7 +89,9 @@ function createEnv(options: MockDbOptions = {}) {
     TELEGRAM_BOT_TOKEN: "token",
     DB: dbState.db,
     MEDIA_BUCKET: { put } as unknown as R2Bucket,
-    INGEST_QUEUE: { send } as unknown as Queue
+    VECTORIZE: { upsert: vi.fn(), query: vi.fn(), deleteByIds: vi.fn() } as unknown as VectorizeIndex,
+    RATE_LIMITER: {} as unknown as KVNamespace,
+    INGEST_QUEUE: { send } as unknown as Queue<any>
   };
 
   return { env, send, put, updateRun: dbState.updateRun };
@@ -115,7 +129,10 @@ type WebhookResponse = {
 };
 
 describe("telegram webhook", () => {
-  it("enqueues once for first-time event", async () => {
+  it("processes first valid message", async () => {
+    vi.mocked(rateLimiter.checkRateLimit).mockResolvedValue(true);
+    vi.mocked(agent.classifyIntent).mockResolvedValue("log");
+
     const app = createApp();
     const { env, send } = createEnv({ duplicate: false });
     const fetchMock = vi
@@ -140,6 +157,9 @@ describe("telegram webhook", () => {
   });
 
   it("does not enqueue duplicates", async () => {
+    vi.mocked(rateLimiter.checkRateLimit).mockResolvedValue(true);
+    vi.mocked(agent.classifyIntent).mockResolvedValue("log");
+
     const app = createApp();
     const { env, send } = createEnv({ duplicate: true });
     const fetchMock = vi

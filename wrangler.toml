@@ -9,6 +9,10 @@ database_name = "gastos-db"
 database_id = "7706d50c-3888-44e2-a135-7c32737cff74"
 migrations_dir = "migrations"
 
+[[kv_namespaces]]
+binding = "RATE_LIMITER"
+id = "94df970c41314b6a8dc414a659cdaf13"
+
 [[queues.producers]]
 binding = "INGEST_QUEUE"
 queue = "gastos-parse-queue"
@@ -21,6 +25,10 @@ binding = "MEDIA_BUCKET"
 bucket_name = "gastos-media"
 
 [vars]
-APP_ENV = "dev"
-OPENAI_TRANSCRIBE_MODEL = "gpt-4o-mini-transcribe"
-OPENAI_VISION_MODEL = "gpt-4.1-mini"
+APP_ENV = "prod"
+OPENAI_TRANSCRIBE_MODEL = "whisper-1"
+OPENAI_VISION_MODEL = "gpt-4o-mini"
+
+[[vectorize]]
+binding = "VECTORIZE"
+index_name = "gastos-vectors"
