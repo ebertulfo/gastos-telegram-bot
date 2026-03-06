@@ -3,6 +3,7 @@ import { getPeriodUtcRange, type TotalsPeriod } from "../totals";
 
 export type ExpenseWithDetails = {
     id: number;
+    source_event_id: number;
     amount_minor: number;
     currency: string;
     occurred_at_utc: string;
@@ -10,6 +11,9 @@ export type ExpenseWithDetails = {
     text_raw: string | null;
     r2_object_key: string | null;
     needs_review_reason: boolean;
+    parsed_description: string | null;
+    category: string;
+    tags: string; // Stored as JSON string in sqlite
 };
 
 export async function getExpenses(
@@ -23,13 +27,17 @@ export async function getExpenses(
     const { results } = await env.DB.prepare(
         `SELECT
        e.id,
+       e.source_event_id,
        e.amount_minor,
        e.currency,
        e.occurred_at_utc,
        e.status,
+       e.category,
+       e.tags,
        se.text_raw,
        se.r2_object_key,
-       pr.needs_review as needs_review_reason
+       pr.needs_review as needs_review_reason,
+       JSON_EXTRACT(pr.parsed_json, '$.description') as parsed_description
      FROM expenses e
      JOIN source_events se ON e.source_event_id = se.id
      LEFT JOIN parse_results pr ON pr.source_event_id = se.id
@@ -49,16 +57,38 @@ export async function updateExpense(
     env: Env,
     userId: number,
     expenseId: number,
-    data: { amount_minor: number; currency: string }
+    data: { amount_minor?: number; currency?: string; category?: string; tags?: string[] }
 ): Promise<boolean> {
-    const result = await env.DB.prepare(
-        `UPDATE expenses
-     SET amount_minor = ?,
-         currency = ?,
-         status = 'final'
-     WHERE id = ? AND user_id = ?`
-    )
-        .bind(data.amount_minor, data.currency, expenseId, userId)
+    const updates: string[] = [];
+    const bindings: any[] = [];
+
+    if (data.amount_minor !== undefined) {
+        updates.push("amount_minor = ?");
+        bindings.push(data.amount_minor);
+    }
+    if (data.currency !== undefined) {
+        updates.push("currency = ?");
+        bindings.push(data.currency);
+    }
+    if (data.category !== undefined) {
+        updates.push("category = ?");
+        bindings.push(data.category);
+    }
+    if (data.tags !== undefined) {
+        updates.push("tags = ?");
+        bindings.push(JSON.stringify(data.tags));
+    }
+
+    if (updates.length === 0) return true;
+
+    // Always clear the needs_review status when manually updated
+    updates.push("status = 'final'");
+    bindings.push(expenseId, userId);
+
+    const query = `UPDATE expenses SET ${updates.join(", ")} WHERE id = ? AND user_id = ?`;
+
+    const result = await env.DB.prepare(query)
+        .bind(...bindings)
         .run();
 
     return result.meta.changes > 0;

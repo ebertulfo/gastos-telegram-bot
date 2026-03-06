@@ -7,11 +7,12 @@ export type UserRecord = {
   timezone: string | null;
   currency: string | null;
   onboarding_step: string | null;
+  tier: "free" | "premium";
 };
 
 export async function getUserByTelegramUserId(env: Env, telegramUserId: number): Promise<UserRecord | null> {
   const row = await env.DB.prepare(
-    `SELECT id, telegram_user_id, telegram_chat_id, timezone, currency, onboarding_step
+    `SELECT id, telegram_user_id, telegram_chat_id, timezone, currency, onboarding_step, tier
      FROM users
      WHERE telegram_user_id = ?`
   )
