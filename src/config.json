@@ -1,0 +1,9 @@
+{
+    "limits": {
+        "daily_token_quota": 5000
+    },
+    "admin": {
+        "unlimited_telegram_ids": [],
+        "banned_telegram_ids": []
+    }
+}

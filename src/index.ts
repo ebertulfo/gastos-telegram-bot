@@ -8,7 +8,7 @@ export default {
   fetch(request: Request, env: Env, ctx: ExecutionContext) {
     return app.fetch(request, env, ctx);
   },
-  queue(batch: MessageBatch<ParseQueueMessage>, env: Env, _ctx: ExecutionContext) {
-    return handleParseQueueBatch(batch, env);
+  queue(batch: MessageBatch<ParseQueueMessage>, env: Env, ctx: ExecutionContext) {
+    return handleParseQueueBatch(batch, env, ctx);
   }
 } satisfies ExportedHandler<Env, ParseQueueMessage>;

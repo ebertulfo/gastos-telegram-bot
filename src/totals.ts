@@ -1,6 +1,6 @@
 import type { Env } from "./types";
 
-export type TotalsPeriod = "today" | "thisweek" | "thismonth" | "thisyear";
+export type TotalsPeriod = "today" | "yesterday" | "thisweek" | "lastweek" | "thismonth" | "lastmonth" | "thisyear" | "lastyear";
 
 type DateParts = {
   year: number;
@@ -19,19 +19,17 @@ export type TotalsResult = {
 
 export function parseTotalsPeriod(command: string): TotalsPeriod | null {
   const normalized = command.trim().toLowerCase();
-  if (normalized === "/today") {
-    return "today";
-  }
-  if (normalized === "/thisweek") {
-    return "thisweek";
-  }
-  if (normalized === "/thismonth") {
-    return "thismonth";
-  }
-  if (normalized === "/thisyear") {
-    return "thisyear";
-  }
-  return null;
+  const map: Record<string, TotalsPeriod> = {
+    "/today": "today",
+    "/yesterday": "yesterday",
+    "/thisweek": "thisweek",
+    "/lastweek": "lastweek",
+    "/thismonth": "thismonth",
+    "/lastmonth": "lastmonth",
+    "/thisyear": "thisyear",
+    "/lastyear": "lastyear",
+  };
+  return map[normalized] ?? null;
 }
 
 export async function getTotalsForUserAndPeriod(
@@ -85,11 +83,20 @@ export function getPeriodUtcRange(now: Date, timezone: string, period: TotalsPer
   if (period === "today") {
     startLocal = { year: localNow.year, month: localNow.month, day: localNow.day };
     nextStartLocal = shiftLocalDate(startLocal, 1);
+  } else if (period === "yesterday") {
+    startLocal = shiftLocalDate({ year: localNow.year, month: localNow.month, day: localNow.day }, -1);
+    nextStartLocal = { year: localNow.year, month: localNow.month, day: localNow.day };
   } else if (period === "thisweek") {
     const dayOfWeek = getDayOfWeek(localNow.year, localNow.month, localNow.day);
     const mondayOffset = (dayOfWeek + 6) % 7;
     startLocal = shiftLocalDate({ year: localNow.year, month: localNow.month, day: localNow.day }, -mondayOffset);
     nextStartLocal = shiftLocalDate(startLocal, 7);
+  } else if (period === "lastweek") {
+    const dayOfWeek = getDayOfWeek(localNow.year, localNow.month, localNow.day);
+    const mondayOffset = (dayOfWeek + 6) % 7;
+    const thisMonday = shiftLocalDate({ year: localNow.year, month: localNow.month, day: localNow.day }, -mondayOffset);
+    startLocal = shiftLocalDate(thisMonday, -7);
+    nextStartLocal = thisMonday;
   } else if (period === "thismonth") {
     startLocal = { year: localNow.year, month: localNow.month, day: 1 };
     if (localNow.month === 12) {
@@ -97,7 +104,18 @@ export function getPeriodUtcRange(now: Date, timezone: string, period: TotalsPer
     } else {
       nextStartLocal = { year: localNow.year, month: localNow.month + 1, day: 1 };
     }
+  } else if (period === "lastmonth") {
+    if (localNow.month === 1) {
+      startLocal = { year: localNow.year - 1, month: 12, day: 1 };
+    } else {
+      startLocal = { year: localNow.year, month: localNow.month - 1, day: 1 };
+    }
+    nextStartLocal = { year: localNow.year, month: localNow.month, day: 1 };
+  } else if (period === "lastyear") {
+    startLocal = { year: localNow.year - 1, month: 1, day: 1 };
+    nextStartLocal = { year: localNow.year, month: 1, day: 1 };
   } else {
+    // thisyear
     startLocal = { year: localNow.year, month: 1, day: 1 };
     nextStartLocal = { year: localNow.year + 1, month: 1, day: 1 };
   }
@@ -126,16 +144,17 @@ export function getPeriodUtcRange(now: Date, timezone: string, period: TotalsPer
 }
 
 function periodLabel(period: TotalsPeriod): string {
-  if (period === "today") {
-    return "Today";
-  }
-  if (period === "thisweek") {
-    return "This Week";
-  }
-  if (period === "thismonth") {
-    return "This Month";
-  }
-  return "This Year";
+  const labels: Record<TotalsPeriod, string> = {
+    today: "Today",
+    yesterday: "Yesterday",
+    thisweek: "This Week",
+    lastweek: "Last Week",
+    thismonth: "This Month",
+    lastmonth: "Last Month",
+    thisyear: "This Year",
+    lastyear: "Last Year",
+  };
+  return labels[period];
 }
 
 function formatMinorAsMoney(amountMinor: number): string {

@@ -51,6 +51,8 @@ export type TelegramUpdate = {
 export type Env = {
   APP_ENV: string;
   TELEGRAM_BOT_TOKEN: string;
+  VECTORIZE: VectorizeIndex;
+  RATE_LIMITER: KVNamespace;
   OPENAI_API_KEY?: string;
   OPENAI_TRANSCRIBE_MODEL?: string;
   OPENAI_VISION_MODEL?: string;
@@ -59,8 +61,18 @@ export type Env = {
   INGEST_QUEUE: Queue<ParseQueueMessage>;
 };
 
-export type ParseQueueMessage = {
-  sourceEventId: number;
-  userId: number;
-  r2ObjectKey: string | null;
-};
+export type ParseQueueMessage =
+  | {
+    type: "receipt";
+    sourceEventId: number;
+    userId: number;
+    r2ObjectKey: string | null;
+  }
+  | {
+    type: "chat";
+    userId: number;
+    telegramId: number;
+    timezone: string;
+    tier: "free" | "premium";
+    text: string;
+  };

@@ -9,6 +9,18 @@ type SendMessageOptions = {
   inline_keyboard?: { text: string; callback_data: string }[][];
 };
 
+/**
+ * Telegram's MarkdownV2 is aggressively strict. It will throw an HTTP 400 error if any of these
+ * special characters are present in the text but not explicitly escaped with a backslash.
+ * Note: We DO NOT escape `*`, `_`, `~`, `` ` ``, or `[` because we actually want the LLM to use them for formatting.
+ */
+export function escapeMarkdown(text: string): string {
+  // Characters that MUST be escaped in MarkdownV2: _ * [ ] ( ) ~ ` > # + - = | { } . !
+  // But we want to allow standard formatting (*bold*, _italic_, `code`, [link](url)).
+  // So we ONLY escape the strict punctuation characters that crash the parser when used normally.
+  return text.replace(/([#+\-=|{}.!>()])/g, '\\$1');
+}
+
 export async function sendTelegramChatMessage(
   env: Env,
   chatId: number,
@@ -36,7 +48,8 @@ export async function sendTelegramChatMessage(
     },
     body: JSON.stringify({
       chat_id: chatId,
-      text,
+      text: escapeMarkdown(text),
+      parse_mode: "MarkdownV2",
       reply_markup: replyMarkup
     })
   });
@@ -74,7 +87,8 @@ export async function editTelegramMessageText(
     body: JSON.stringify({
       chat_id: chatId,
       message_id: messageId,
-      text,
+      text: escapeMarkdown(text),
+      parse_mode: "MarkdownV2",
       reply_markup: replyMarkup
     })
   });
@@ -103,5 +117,22 @@ export async function answerCallbackQuery(env: Env, callbackQueryId: string, tex
 
   if (!response.ok) {
     console.error(`Telegram answerCallbackQuery failed with status ${response.status}`);
+  }
+}
+
+export async function sendChatAction(env: Env, chatId: number, action: "typing" | "upload_photo" | "record_voice" | "upload_voice" | "upload_document" = "typing"): Promise<void> {
+  const response = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendChatAction`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      chat_id: chatId,
+      action
+    })
+  });
+
+  if (!response.ok) {
+    console.error(`Telegram sendChatAction failed with status ${response.status}`);
   }
 }
