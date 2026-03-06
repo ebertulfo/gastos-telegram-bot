@@ -32,3 +32,6 @@ OPENAI_VISION_MODEL = "gpt-4o-mini"
 [[vectorize]]
 binding = "VECTORIZE"
 index_name = "gastos-vectors"
+
+[triggers]
+crons = ["0 * * * *"]
