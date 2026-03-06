@@ -22,3 +22,6 @@
 - Tests use `@cloudflare/vitest-pool-workers` — runs in a Miniflare Workers environment
 - OpenAI, Vectorize, agent, and rate-limiter are mocked in tests — not integration tested
 - Pure deletion/cleanup tasks don't need new tests; existing suite is sufficient as regression guard
+
+## Workflow
+- After completing a task batch, run the `claude-md-management:revise-claude-md` skill to capture learnings
