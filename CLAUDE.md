@@ -29,4 +29,49 @@
 - Pure deletion/cleanup tasks don't need new tests; existing suite is sufficient as regression guard
 
 ## Workflow
-- After completing a task batch, run the `claude-md-management:revise-claude-md` skill to capture learnings
+
+### Task Size Assessment
+- Run `gastos:assess-task-size` at the start of every task
+- Announce size + reasoning + pipeline steps
+- Wait for user confirmation before proceeding
+- User can override size at any time
+
+### Size Heuristics
+| Size | Heuristic |
+|------|-----------|
+| **Trivial** | No logic change — typos, renames, deleting dead code, config tweaks |
+| **Small** | Logic change in 1-2 files, no new concepts — bug fixes, adding a field |
+| **Medium** | 3+ files OR introduces a new concept but within existing patterns |
+| **Large** | New feature spanning multiple layers, architectural changes, design decisions needed |
+
+### Pipeline by Size
+| Step | Trivial | Small | Medium | Large |
+|------|---------|-------|--------|-------|
+| Brainstorm | - | - | - | `superpowers:brainstorming` |
+| Plan | - | - | `superpowers:writing-plans` | `superpowers:writing-plans` |
+| Worktree | - | - | `superpowers:using-git-worktrees` | `superpowers:using-git-worktrees` |
+| TDD | - | `superpowers:test-driven-development` | `superpowers:test-driven-development` | `superpowers:test-driven-development` |
+| Verify | `npm run check && npm run test` | `npm run check && npm run test` | `superpowers:verification-before-completion` | `superpowers:verification-before-completion` |
+| Review | - | `superpowers:requesting-code-review` | `superpowers:requesting-code-review` | `superpowers:requesting-code-review` |
+| Simplify | - | - | `simplify` | `simplify` |
+| Revise CLAUDE.md | - | - | `claude-md-management:revise-claude-md` | `claude-md-management:revise-claude-md` |
+| Commit/PR | `commit-commands:commit` | `commit-commands:commit` | `commit-commands:commit-push-pr` | `commit-commands:commit-push-pr` |
+| Deploy | - | - | Prompt user | Prompt user |
+
+### Enforcement
+- **State tracker** at `/tmp/gastos-workflow-state.json` tracks completed steps
+- **Block:** Commit/deploy blocked if `verify` step hasn't completed (tests must pass)
+- **Warn:** Commit warns if `review`, `simplify`, or `revise-claude-md` steps are missing
+- Never skip steps for the assessed size
+
+### Specialist Subagents
+- Use `cloudflare-specialist` for Workers/D1/R2/KV/Queues/Vectorize questions
+- Use `telegram-specialist` for Bot API/webhook/Mini App questions
+- Use `openai-specialist` for API/Agents SDK/prompt engineering questions
+- Delegate proactively — don't wait to be asked
+
+### Custom Skills
+- `gastos:assess-task-size` — classify task and announce pipeline (every task)
+- `gastos:d1-migration` — D1 migration checklist
+- `gastos:new-db-module` — scaffold src/db/ module
+- `gastos:rollback` — emergency deployment rollback
