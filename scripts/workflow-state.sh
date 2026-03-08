@@ -22,6 +22,11 @@ cmd_init() {
   local size="${2:?Missing size}"
   local steps_json="${3:?Missing steps JSON array}"
 
+  if ! echo "$steps_json" | jq -e 'type == "array"' > /dev/null 2>&1; then
+    echo "Error: steps-json must be a JSON array" >&2
+    exit 1
+  fi
+
   jq -n \
     --arg task "$description" \
     --arg size "$size" \
@@ -78,6 +83,7 @@ cmd_check() {
     exit 0
   fi
 
+  echo "Step not completed: $step" >&2
   exit 1
 }
 
