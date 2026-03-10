@@ -128,52 +128,7 @@ export function createAgentTools(env: Env, userId: number, timezone: string, cur
 }
 
 // ------------------------------------------------------------------------------------------------
-// BACKWARD COMPAT — used by agent.ts until Task 6 rewrites it with SDK Agent
-// ------------------------------------------------------------------------------------------------
-
-/** @deprecated Use createAgentTools() instead. Will be removed in Task 6. */
-export const GetFinancialReportTool = {
-    type: "function" as const,
-    function: {
-        name: "get_financial_report",
-        description: "Returns a comprehensive financial report for the authenticated user. This is your ONLY database query tool. It returns the total spend, a breakdown by category (sorted by amount), and the top recent transactions—all in one call. Use this for ANY spending question.",
-        parameters: {
-            type: "object",
-            properties: {
-                period: {
-                    type: "string",
-                    enum: ["today", "yesterday", "thisweek", "lastweek", "thismonth", "lastmonth", "thisyear", "lastyear"],
-                    description: "The time boundary to query."
-                },
-                category: {
-                    type: "string",
-                    enum: ["Food", "Transport", "Housing", "Shopping", "Entertainment", "Health", "Other"],
-                    description: "Optional. Filters results to a specific master category."
-                },
-                tag_query: {
-                    type: "string",
-                    description: "Optional. Freeform text to search expenses semantically."
-                }
-            },
-            required: ["period"]
-        }
-    }
-};
-
-/** @deprecated Use createAgentTools() instead. Will be removed in Task 6. */
-export async function executeGetFinancialReport(
-    env: Env,
-    secureUserId: number,
-    secureTimezone: string,
-    period: string,
-    category?: string,
-    tagQuery?: string
-): Promise<string> {
-    return executeGetFinancialReportInternal(env, secureUserId, secureTimezone, period, category, tagQuery);
-}
-
-// ------------------------------------------------------------------------------------------------
-// Internal implementation — copied verbatim from the original executeGetFinancialReport()
+// Internal implementation used by the get_financial_report tool
 // ------------------------------------------------------------------------------------------------
 
 async function executeGetFinancialReportInternal(
