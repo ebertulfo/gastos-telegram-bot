@@ -1,326 +1,124 @@
-import { extractAmountCurrencyFromR2Image, extractAmountCurrencyFromText, transcribeR2Audio, getHistoricalContext, generateEmbedding } from "./ai/openai";
-import { runSemanticChat } from "./ai/agent";
-import { sendTelegramChatMessage } from "./telegram/messages";
-import { getSourceEventForQueue } from "./db/source-events";
-import { insertParseResult } from "./db/parse-results";
-import { insertExpense } from "./db/expenses";
+import { run, getGlobalTraceProvider } from "@openai/agents";
+import type { AgentInputItem } from "@openai/agents";
+import { createGastosAgent } from "./ai/agent";
+import { D1Session } from "./ai/session";
+import { transcribeR2Audio } from "./ai/openai";
+import { sendTelegramChatMessage, sendChatAction } from "./telegram/messages";
+import { checkAndRefreshTokenQuota } from "./db/quotas";
 import type { Env, ParseQueueMessage } from "./types";
 
-export async function handleParseQueueBatch(batch: MessageBatch<ParseQueueMessage>, env: Env, ctx: ExecutionContext) {
+export async function handleParseQueueBatch(
+  batch: MessageBatch<ParseQueueMessage>,
+  env: Env,
+  ctx: ExecutionContext,
+) {
   for (const message of batch.messages) {
     try {
-      if (message.body.type === "chat") {
-        await runSemanticChat(
-          env,
-          message.body.userId,
-          message.body.telegramId,
-          message.body.timezone,
-          message.body.tier,
-          message.body.text
-        );
-      } else {
-        await handleReceiptMessage(env, ctx, message.body);
-      }
+      await processMessage(env, ctx, message.body);
       message.ack();
     } catch (error) {
-      const errorPayload = message.body.type === "receipt"
-        ? { sourceEventId: message.body.sourceEventId }
-        : { telegramId: message.body.telegramId };
-
       console.error("Queue message processing failed", {
-        ...errorPayload,
-        error: error instanceof Error ? error.message : String(error)
+        userId: message.body.userId,
+        error: error instanceof Error ? error.message : String(error),
       });
       message.retry();
     }
   }
 }
 
-async function handleReceiptMessage(
+async function processMessage(
   env: Env,
   ctx: ExecutionContext,
-  body: Extract<ParseQueueMessage, { type: "receipt" }>
+  body: ParseQueueMessage,
 ): Promise<void> {
-  const sourceEvent = await getSourceEventForQueue(env.DB, body.sourceEventId);
-  if (!sourceEvent) {
-    throw new Error(`Source event not found: ${body.sourceEventId}`);
-  }
+  const { userId, telegramId, timezone, currency, tier } = body;
 
-  const extraction = await extractForSourceEvent(env, sourceEvent, body.r2ObjectKey);
-
-  await insertParseResult(
-    env.DB,
-    sourceEvent.id,
-    sourceEvent.message_type === "text" ? "v1-text-parser" : "v1-multimodal-parser",
-    extraction.parsedJson,
-    extraction.confidence,
-    extraction.needsReview
-  );
-
-  if (extraction.amountMinor !== null && extraction.currency) {
-    await insertExpense(
-      env.DB,
-      sourceEvent.user_id,
-      sourceEvent.id,
-      extraction.amountMinor,
-      extraction.currency,
-      extraction.category ?? "Other",
-      extraction.tags ?? [],
-      sourceEvent.received_at_utc,
-      extraction.needsReview
+  // 1. Check quota
+  const allowed = await checkAndRefreshTokenQuota(env.DB, userId, telegramId, tier);
+  if (!allowed) {
+    await sendTelegramChatMessage(
+      env,
+      telegramId,
+      "You've reached your daily usage limit. Try again tomorrow!",
     );
-
-    if (sourceEvent.telegram_id) {
-      const formattedMinor = (extraction.amountMinor / 100).toFixed(2);
-      let replyText = `✅ Logged: ${extraction.currency} ${formattedMinor}`;
-      if (extraction.needsReview) {
-        replyText += `\n⚠️ Marked for review (confidence: ${Math.round(extraction.confidence * 100)}%)`;
-      }
-      await sendTelegramChatMessage(env, sourceEvent.telegram_id, replyText);
-    }
-
-    // M9: Vector Memory Sync - background thread to avoid blocking the queue response
-    if (!extraction.needsReview && sourceEvent.text_raw && sourceEvent.text_raw.trim() !== "") {
-      ctx.waitUntil((async () => {
-        try {
-          const embedding = await generateEmbedding(env, sourceEvent.text_raw!);
-          if (embedding.length > 0) {
-            await env.VECTORIZE.upsert([{
-              id: `expense_${sourceEvent.id}`,
-              values: embedding,
-              metadata: {
-                user_id: sourceEvent.user_id,
-                expense_id: sourceEvent.id,
-                category: extraction.category ?? "Other",
-                tags: JSON.stringify(extraction.tags ?? []),
-                currency: extraction.currency ?? "",
-                raw_text: sourceEvent.text_raw ?? ""
-              }
-            }]);
-          }
-        } catch (err) {
-          console.error("Failed to sync embedding to Vectorize:", err);
-        }
-      })());
-    }
-  } else {
-    if (sourceEvent.telegram_id) {
-      const reason = String(extraction.parsedJson.reason || "unrecognized format");
-      await sendTelegramChatMessage(env, sourceEvent.telegram_id, `❌ Failed to extract amount: ${reason}`);
-    }
+    return;
   }
-}
 
-type ExtractionResult = {
-  amountMinor: number | null;
-  currency: string | null;
-  category?: string;
-  tags?: string[];
-  needsReview: boolean;
-  confidence: number;
-  parsedJson: Record<string, unknown>;
-};
+  // 2. Send typing indicator
+  await sendChatAction(env, telegramId, "typing");
 
-export async function extractForSourceEvent(
-  env: Env,
-  sourceEvent: {
-    message_type: "text" | "photo" | "voice";
-    text_raw: string | null;
-    r2_object_key: string | null;
-    user_currency: string | null;
-    user_timezone: string | null;
-    user_id: number;
-  },
-  queueR2ObjectKey: string | null
-): Promise<ExtractionResult> {
-  const messageType = sourceEvent.message_type;
-  const textRaw = sourceEvent.text_raw;
-  const userCurrency = sourceEvent.user_currency;
-  const userTimezone = sourceEvent.user_timezone;
-  const mediaKey = queueR2ObjectKey ?? sourceEvent.r2_object_key;
+  // 3. Pre-process media into agent input
+  let agentInput: string | AgentInputItem[];
 
-  if (messageType === "voice") {
-    if (!mediaKey || !env.OPENAI_API_KEY) {
-      return unprocessedResult("voice", "missing_voice_media_or_openai_key");
-    }
-
-    const transcript = await transcribeR2Audio(env, mediaKey);
+  if (body.mediaType === "voice" && body.r2ObjectKey) {
+    // Voice: transcribe via Whisper, then pass transcript as string
+    const transcript = await transcribeR2Audio(env, body.r2ObjectKey);
     if (!transcript) {
-      return unprocessedResult("voice", "transcription_empty");
+      await sendTelegramChatMessage(env, telegramId, "Could not transcribe your voice message. Please try again.");
+      return;
+    }
+    agentInput = transcript;
+  } else if (body.mediaType === "photo" && body.r2ObjectKey) {
+    // Photo: fetch from R2, convert to base64, create multimodal input
+    const object = await env.MEDIA_BUCKET.get(body.r2ObjectKey);
+    if (!object) {
+      await sendTelegramChatMessage(env, telegramId, "Could not retrieve the image. Please try again.");
+      return;
+    }
+    const bytes = new Uint8Array(await object.arrayBuffer());
+    const mime = object.httpMetadata?.contentType ?? "image/jpeg";
+    const base64 = arrayBufferToBase64(bytes);
+    const dataUrl = `data:${mime};base64,${base64}`;
+
+    const content: Array<{ type: "input_image"; image: string } | { type: "input_text"; text: string }> = [
+      { type: "input_image", image: dataUrl },
+    ];
+    // Include caption text if provided
+    if (body.text) {
+      content.push({ type: "input_text", text: body.text });
     }
 
-    const historicalContext = await getHistoricalContext(env, sourceEvent.user_id, transcript);
-    const aiExtraction = await extractAmountCurrencyFromText(env, transcript, userCurrency, userTimezone, historicalContext);
-    if (!aiExtraction) {
-      return unprocessedResult("voice", "ai_text_extraction_failed");
-    }
+    agentInput = [{ role: "user" as const, content }];
+  } else {
+    // Text message
+    agentInput = body.text ?? "";
+  }
 
-    let resolvedCurrency = aiExtraction.currency;
-    if (!resolvedCurrency) {
-      resolvedCurrency = userCurrency;
-    }
+  // 4. Create agent and session
+  const agent = createGastosAgent(env, userId, timezone, currency);
+  const session = new D1Session(env.DB, userId);
 
-    return {
-      amountMinor: aiExtraction.amountMinor,
-      currency: resolvedCurrency,
-      category: aiExtraction.category,
-      tags: aiExtraction.tags,
-      needsReview: aiExtraction.needsReview || !aiExtraction.currency,
-      confidence: aiExtraction.confidence,
-      parsedJson: {
-        modality: "voice",
-        status: aiExtraction.amountMinor !== null && resolvedCurrency ? "extracted" : "unprocessed",
-        amountMinor: aiExtraction.amountMinor,
-        currency: resolvedCurrency,
-        transcript,
-        ...aiExtraction.metadata
+  // 5. Run the agent
+  let result;
+  try {
+    result = await run(agent, agentInput, { session, maxTurns: 10 });
+  } catch (err: unknown) {
+    // Check if error has .state for resumption
+    if (err && typeof err === "object" && "state" in err && err.state) {
+      try {
+        result = await run(agent, err.state as any);
+      } catch {
+        await sendTelegramChatMessage(env, telegramId, "Something went wrong, please try again.");
+        return;
       }
-    };
-  }
-
-  if (messageType === "photo") {
-    if (!mediaKey || !env.OPENAI_API_KEY) {
-      return unprocessedResult("photo", "missing_photo_media_or_openai_key");
+    } else {
+      throw err; // Re-throw to trigger message.retry()
     }
-
-    let historicalContext = "";
-    if (textRaw && textRaw.trim() !== "") {
-      historicalContext = await getHistoricalContext(env, sourceEvent.user_id, textRaw);
-    }
-    const visionExtraction = await extractAmountCurrencyFromR2Image(env, mediaKey, userCurrency, userTimezone, historicalContext);
-    if (!visionExtraction) {
-      return unprocessedResult("photo", "vision_empty");
-    }
-
-    return {
-      amountMinor: visionExtraction.amountMinor,
-      currency: visionExtraction.currency,
-      category: visionExtraction.category,
-      tags: visionExtraction.tags,
-      needsReview: visionExtraction.needsReview,
-      confidence: visionExtraction.confidence,
-      parsedJson: {
-        modality: "photo",
-        status: visionExtraction.amountMinor !== null && visionExtraction.currency ? "extracted" : "unprocessed",
-        amountMinor: visionExtraction.amountMinor,
-        currency: visionExtraction.currency,
-        ...visionExtraction.metadata
-      }
-    };
   }
 
-  // messageType === "text"
-  const contextText = textRaw ?? "";
-  if (!contextText.trim() || !env.OPENAI_API_KEY) {
-    return extractFromText(contextText, userCurrency, userTimezone); // Regex fallback
+  // 6. Send result to Telegram
+  if (result.finalOutput) {
+    await sendTelegramChatMessage(env, telegramId, result.finalOutput);
   }
 
-  const historicalContext = await getHistoricalContext(env, sourceEvent.user_id, contextText);
-  const textExtraction = await extractAmountCurrencyFromText(env, contextText, userCurrency, userTimezone, historicalContext);
-
-  if (!textExtraction) {
-    return unprocessedResult("text" as any, "ai_text_extraction_failed");
-  }
-
-  let resolvedCurrency = textExtraction.currency;
-  if (!resolvedCurrency) {
-    resolvedCurrency = userCurrency;
-  }
-
-  return {
-    amountMinor: textExtraction.amountMinor,
-    currency: resolvedCurrency,
-    category: textExtraction.category,
-    tags: textExtraction.tags,
-    needsReview: textExtraction.needsReview || !textExtraction.currency,
-    confidence: textExtraction.confidence,
-    parsedJson: {
-      modality: "text",
-      status: textExtraction.amountMinor !== null && resolvedCurrency ? "extracted" : "unprocessed",
-      amountMinor: textExtraction.amountMinor,
-      currency: resolvedCurrency,
-      ...textExtraction.metadata
-    }
-  };
+  // 7. Flush traces in background
+  ctx.waitUntil(getGlobalTraceProvider().forceFlush());
 }
 
-function extractFromText(text: string, userCurrency: string | null, userTimezone: string | null): ExtractionResult {
-  const normalizedText = text ?? "";
-  const amountMinor = extractAmountMinor(normalizedText);
-  const explicitCurrency = extractExplicitCurrency(normalizedText);
-  const currency = explicitCurrency ?? userCurrency;
-  const inferredCurrency = !explicitCurrency && Boolean(userCurrency);
-  const needsReview = inferredCurrency;
-
-  if (amountMinor === null || !currency) {
-    return {
-      amountMinor: null,
-      currency: currency ?? null,
-      needsReview: true,
-      confidence: amountMinor === null ? 0 : 0.5,
-      parsedJson: {
-        modality: "text",
-        status: "unprocessed",
-        amountMinor,
-        currency,
-        reason: amountMinor === null ? "amount_missing" : "currency_missing"
-      }
-    };
+function arrayBufferToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
   }
-
-  return {
-    amountMinor,
-    currency,
-    needsReview,
-    confidence: inferredCurrency ? 0.75 : 0.95,
-    parsedJson: {
-      modality: "text",
-      status: "extracted",
-      amountMinor,
-      currency,
-      currencySource: explicitCurrency ? "explicit" : "user_default"
-    }
-  };
-}
-
-function unprocessedResult(modality: "photo" | "voice", reason: string): ExtractionResult {
-  return {
-    amountMinor: null,
-    currency: null,
-    needsReview: true,
-    confidence: 0,
-    parsedJson: {
-      modality,
-      status: "unprocessed",
-      reason
-    }
-  };
-}
-
-function extractAmountMinor(text: string): number | null {
-  const normalized = text.replace(/,/g, "");
-  const decimalMatches = normalized.match(/-?\d+\.\d{1,2}/g) ?? [];
-  const integerMatches = normalized.match(/-?\d+/g) ?? [];
-  const amountString = decimalMatches[0] ?? integerMatches[0];
-  if (!amountString) {
-    return null;
-  }
-
-  const parsed = Number.parseFloat(amountString);
-  if (!Number.isFinite(parsed)) {
-    return null;
-  }
-
-  return Math.round(parsed * 100);
-}
-
-const KNOWN_CURRENCIES = new Set([
-  "USD", "EUR", "GBP", "JPY", "AUD", "CAD", "CHF", "CNY", "HKD", "SGD",
-  "PHP", "INR", "MYR", "THB", "IDR", "VND", "KRW", "TWD", "NZD", "SEK",
-  "NOK", "DKK", "MXN", "BRL", "ARS", "ZAR", "AED", "SAR", "TRY", "RUB"
-]);
-
-function extractExplicitCurrency(text: string): string | null {
-  const words = text.toUpperCase().match(/\b[A-Z]{3}\b/g) ?? [];
-  return words.find(w => KNOWN_CURRENCIES.has(w)) ?? null;
+  return btoa(binary);
 }

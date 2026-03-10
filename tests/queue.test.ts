@@ -1,158 +1,239 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { extractForSourceEvent, handleParseQueueBatch } from "../src/queue";
-import * as openai from "../src/ai/openai";
-import type { Env } from "../src/types";
+import { handleParseQueueBatch } from "../src/queue";
+import type { Env, ParseQueueMessage } from "../src/types";
 
-// Mock the AI module entirely to test M7 Geographic parameters
-vi.mock("../src/ai/openai", () => ({
-  extractAmountCurrencyFromText: vi.fn(),
-  extractAmountCurrencyFromR2Image: vi.fn(),
-  transcribeR2Audio: vi.fn()
+// Mock the SDK
+vi.mock("@openai/agents", () => ({
+  run: vi.fn().mockResolvedValue({ finalOutput: "Logged: PHP 150.00 | Food | lunch" }),
+  getGlobalTraceProvider: vi.fn(() => ({ forceFlush: vi.fn().mockResolvedValue(undefined) })),
+}));
+
+// Mock agent creation
+vi.mock("../src/ai/agent", () => ({
+  createGastosAgent: vi.fn(() => ({ name: "gastos" })),
+}));
+
+// Mock session
+vi.mock("../src/ai/session", () => ({
+  D1Session: vi.fn().mockImplementation(() => ({})),
 }));
 
 // Mock Telegram to prevent real network calls
 vi.mock("../src/telegram/messages", () => ({
-  sendTelegramChatMessage: vi.fn().mockResolvedValue({})
+  sendTelegramChatMessage: vi.fn().mockResolvedValue(undefined),
+  sendChatAction: vi.fn().mockResolvedValue(undefined),
 }));
 
-// Provide a mock db that spies on SQL binds
-function createEnv(shouldFail = false, captureBinds: any[] = []): Env {
-  const run = vi.fn(async () => {
-    if (shouldFail) {
-      throw new Error("db failure");
-    }
-    return {};
-  });
-  const first = vi.fn(async () => ({
-    id: 42,
-    user_id: 7,
-    message_type: "photo", // mock as photo so it hits Vision
-    text_raw: null,
-    r2_object_key: "receipt.jpg",
-    received_at_utc: "2026-02-12T10:00:00.000Z",
-    user_currency: "PHP",
-    user_timezone: "Asia/Manila",
-    telegram_id: 12345
-  }));
-  const prepare = vi.fn((query: string) => {
-    if (query.includes("FROM source_events")) {
-      return { bind: vi.fn(() => ({ first })) };
-    }
-    return {
-      bind: vi.fn((...args) => {
-        captureBinds.push(...args);
-        return { run };
-      })
-    };
-  });
+// Mock quotas
+vi.mock("../src/db/quotas", () => ({
+  checkAndRefreshTokenQuota: vi.fn().mockResolvedValue(true),
+}));
 
+// Mock transcription
+vi.mock("../src/ai/openai", () => ({
+  transcribeR2Audio: vi.fn().mockResolvedValue("coffee 5 dollars"),
+}));
+
+function createEnv(): Env {
   return {
     APP_ENV: "test",
     TELEGRAM_BOT_TOKEN: "token",
-    OPENAI_API_KEY: "test-openai-key", // Required for AI processing
-    DB: { prepare } as unknown as D1Database,
-    MEDIA_BUCKET: { get: vi.fn() } as unknown as R2Bucket,
+    OPENAI_API_KEY: "test-openai-key",
+    DB: { prepare: vi.fn() } as unknown as D1Database,
+    MEDIA_BUCKET: {
+      get: vi.fn().mockResolvedValue({
+        arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
+        httpMetadata: { contentType: "image/jpeg" },
+      }),
+    } as unknown as R2Bucket,
     VECTORIZE: { upsert: vi.fn(), query: vi.fn(), deleteByIds: vi.fn() } as unknown as VectorizeIndex,
     RATE_LIMITER: {} as unknown as KVNamespace,
-    INGEST_QUEUE: {} as Queue
+    INGEST_QUEUE: {} as Queue,
   };
 }
 
-describe("M7 Categories & Tags Queue Extraction", () => {
+describe("queue processMessage via SDK agent", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("extractForSourceEvent injects geographic context and maps AI categories", async () => {
-    // M7 Mock OpenAI returning categorized response
-    vi.mocked(openai.extractAmountCurrencyFromR2Image).mockResolvedValue({
-      amountMinor: 25000,
-      currency: "PHP",
-      category: "Food",
-      tags: ["andoks", "chicken"],
-      confidence: 0.95,
-      needsReview: false,
-      metadata: {}
-    });
-
-    const env = createEnv(false);
-
-    const sourceEvent = {
-      message_type: "photo" as const,
-      text_raw: null,
-      r2_object_key: "test-receipt.jpg",
-      user_currency: "PHP",
-      user_timezone: "Asia/Manila",
-      user_id: 7
-    };
-
-    const result = await extractForSourceEvent(env, sourceEvent, null);
-
-    // M7 Verification 1: Geographic LLM variables properly injected
-    expect(openai.extractAmountCurrencyFromR2Image).toHaveBeenCalledWith(
-      env,
-      "test-receipt.jpg",
-      "PHP",
-      "Asia/Manila",
-      ""
-    );
-
-    // M7 Verification 2: Mapped values correctly retrieved
-    expect(result.amountMinor).toBe(25000);
-    expect(result.category).toBe("Food");
-    expect(result.tags).toEqual(["andoks", "chicken"]);
-  });
-
-  it("handleParseQueueBatch maps M7 Category and Tags into the database", async () => {
-    // M7 Mock OpenAI returning categorized response
-    vi.mocked(openai.extractAmountCurrencyFromR2Image).mockResolvedValue({
-      amountMinor: 1550,
-      currency: "PHP",
-      category: "Transport",
-      tags: ["grab", "taxi"],
-      confidence: 0.95,
-      needsReview: false,
-      metadata: {}
-    });
+  it("processes a text message through the agent and acks", async () => {
+    const { run } = await import("@openai/agents");
+    const { sendTelegramChatMessage } = await import("../src/telegram/messages");
 
     const ack = vi.fn();
     const retry = vi.fn();
-    const capturedBinds: any[] = [];
-    const env = createEnv(false, capturedBinds);
+    const env = createEnv();
 
-    // The message simulates triggering the queue processing
+    const body: ParseQueueMessage = {
+      userId: 7,
+      telegramId: 12345,
+      timezone: "Asia/Manila",
+      currency: "PHP",
+      tier: "free",
+      text: "coffee 150",
+    };
+
     await handleParseQueueBatch(
       {
-        messages: [{ body: { type: "receipt", sourceEventId: 42, userId: 7, r2ObjectKey: null }, ack, retry }]
-      } as unknown as MessageBatch<{ type: "receipt"; sourceEventId: number; userId: number; r2ObjectKey: string | null }>,
+        messages: [{ body, ack, retry }],
+      } as unknown as MessageBatch<ParseQueueMessage>,
       env,
-      { waitUntil: vi.fn() } as unknown as ExecutionContext
+      { waitUntil: vi.fn() } as unknown as ExecutionContext,
     );
 
     expect(ack).toHaveBeenCalled();
-
-    // In our `queue.ts` we have two inserts: `parse_results` then `expenses`.
-    // The `expenses` insertion should be at the very end.
-    // Let's assert that "Transport" and "[\"grab\",\"taxi\"]" were bound!
-
-    expect(capturedBinds).toContain("Transport");
-    expect(capturedBinds).toContain(JSON.stringify(["grab", "taxi"]));
+    expect(retry).not.toHaveBeenCalled();
+    expect(run).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "gastos" }),
+      "coffee 150",
+      expect.objectContaining({ maxTurns: 10 }),
+    );
+    expect(sendTelegramChatMessage).toHaveBeenCalledWith(
+      env,
+      12345,
+      "Logged: PHP 150.00 | Food | lunch",
+    );
   });
 
-  it("retries on failure", async () => {
+  it("retries on agent failure", async () => {
+    const { run } = await import("@openai/agents");
+    vi.mocked(run).mockRejectedValueOnce(new Error("model error"));
+
     const ack = vi.fn();
     const retry = vi.fn();
-    const env = createEnv(true);
+    const env = createEnv();
+
+    const body: ParseQueueMessage = {
+      userId: 7,
+      telegramId: 12345,
+      timezone: "Asia/Manila",
+      currency: "PHP",
+      tier: "free",
+      text: "coffee 150",
+    };
 
     await handleParseQueueBatch(
       {
-        messages: [{ body: { type: "receipt", sourceEventId: 42, userId: 7, r2ObjectKey: null }, ack, retry }]
-      } as unknown as MessageBatch<{ type: "receipt"; sourceEventId: number; userId: number; r2ObjectKey: string | null }>,
+        messages: [{ body, ack, retry }],
+      } as unknown as MessageBatch<ParseQueueMessage>,
       env,
-      { waitUntil: vi.fn() } as unknown as ExecutionContext
+      { waitUntil: vi.fn() } as unknown as ExecutionContext,
     );
 
     expect(retry).toHaveBeenCalledTimes(1);
     expect(ack).not.toHaveBeenCalled();
+  });
+
+  it("sends quota exceeded message without running the agent", async () => {
+    const { run } = await import("@openai/agents");
+    const { checkAndRefreshTokenQuota } = await import("../src/db/quotas");
+    const { sendTelegramChatMessage } = await import("../src/telegram/messages");
+
+    vi.mocked(checkAndRefreshTokenQuota).mockResolvedValueOnce(false);
+
+    const ack = vi.fn();
+    const retry = vi.fn();
+    const env = createEnv();
+
+    const body: ParseQueueMessage = {
+      userId: 7,
+      telegramId: 12345,
+      timezone: "Asia/Manila",
+      currency: "PHP",
+      tier: "free",
+      text: "coffee 150",
+    };
+
+    await handleParseQueueBatch(
+      {
+        messages: [{ body, ack, retry }],
+      } as unknown as MessageBatch<ParseQueueMessage>,
+      env,
+      { waitUntil: vi.fn() } as unknown as ExecutionContext,
+    );
+
+    expect(ack).toHaveBeenCalled();
+    expect(run).not.toHaveBeenCalled();
+    expect(sendTelegramChatMessage).toHaveBeenCalledWith(
+      env,
+      12345,
+      expect.stringContaining("limit"),
+    );
+  });
+
+  it("processes a voice message by transcribing first", async () => {
+    const { run } = await import("@openai/agents");
+
+    const ack = vi.fn();
+    const retry = vi.fn();
+    const env = createEnv();
+
+    const body: ParseQueueMessage = {
+      userId: 7,
+      telegramId: 12345,
+      timezone: "Asia/Manila",
+      currency: "PHP",
+      tier: "free",
+      r2ObjectKey: "voice/abc.ogg",
+      mediaType: "voice",
+    };
+
+    await handleParseQueueBatch(
+      {
+        messages: [{ body, ack, retry }],
+      } as unknown as MessageBatch<ParseQueueMessage>,
+      env,
+      { waitUntil: vi.fn() } as unknown as ExecutionContext,
+    );
+
+    expect(ack).toHaveBeenCalled();
+    // Voice should be transcribed then passed as string
+    expect(run).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "gastos" }),
+      "coffee 5 dollars",
+      expect.objectContaining({ maxTurns: 10 }),
+    );
+  });
+
+  it("processes a photo message with multimodal input", async () => {
+    const { run } = await import("@openai/agents");
+
+    const ack = vi.fn();
+    const retry = vi.fn();
+    const env = createEnv();
+
+    const body: ParseQueueMessage = {
+      userId: 7,
+      telegramId: 12345,
+      timezone: "Asia/Manila",
+      currency: "PHP",
+      tier: "free",
+      r2ObjectKey: "photos/receipt.jpg",
+      mediaType: "photo",
+    };
+
+    await handleParseQueueBatch(
+      {
+        messages: [{ body, ack, retry }],
+      } as unknown as MessageBatch<ParseQueueMessage>,
+      env,
+      { waitUntil: vi.fn() } as unknown as ExecutionContext,
+    );
+
+    expect(ack).toHaveBeenCalled();
+    // Photo should be passed as AgentInputItem[] with input_image
+    expect(run).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "gastos" }),
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: "user",
+          content: expect.arrayContaining([
+            expect.objectContaining({ type: "input_image" }),
+          ]),
+        }),
+      ]),
+      expect.objectContaining({ maxTurns: 10 }),
+    );
   });
 });
