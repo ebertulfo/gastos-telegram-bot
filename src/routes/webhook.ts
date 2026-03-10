@@ -61,7 +61,7 @@ export async function handleTelegramWebhook(c: Context<{ Bindings: Env }>) {
   const payload = updateSchema.safeParse(json);
   if (!payload.success || (!payload.data.message && !payload.data.callback_query)) {
     if (!payload.success) {
-      console.error("Zod Validation Error:", JSON.stringify(payload.error.errors));
+      console.error("Zod Validation Error:", JSON.stringify(payload.error.issues));
       console.log("Raw Telegram Payload:", JSON.stringify(json));
     }
     return c.json({ status: "ignored", message: "Unsupported update type" }, 200);
