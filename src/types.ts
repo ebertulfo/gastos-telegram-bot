@@ -61,18 +61,13 @@ export type Env = {
   INGEST_QUEUE: Queue<ParseQueueMessage>;
 };
 
-export type ParseQueueMessage =
-  | {
-    type: "receipt";
-    sourceEventId: number;
-    userId: number;
-    r2ObjectKey: string | null;
-  }
-  | {
-    type: "chat";
-    userId: number;
-    telegramId: number;
-    timezone: string;
-    tier: "free" | "premium";
-    text: string;
-  };
+export type ParseQueueMessage = {
+  userId: number;
+  telegramId: number;
+  timezone: string;
+  currency: string;
+  tier: "free" | "premium";
+  text?: string;
+  r2ObjectKey?: string;
+  mediaType?: "photo" | "voice";
+};
