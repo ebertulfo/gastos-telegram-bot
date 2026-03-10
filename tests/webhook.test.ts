@@ -1,14 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createApp } from "../src/app";
-import * as queue from "../src/queue";
-import * as agent from "../src/ai/agent";
 import * as rateLimiter from "../src/rate-limiter";
 import type { Env } from "../src/types";
-
-vi.mock("../src/ai/agent", () => ({
-  classifyIntent: vi.fn(),
-  runSemanticChat: vi.fn()
-}));
 
 vi.mock("../src/rate-limiter", () => ({
   checkRateLimit: vi.fn()
@@ -123,15 +116,27 @@ function buildPhotoUpdateBody() {
   });
 }
 
+function buildVoiceUpdateBody() {
+  return JSON.stringify({
+    update_id: 1,
+    message: {
+      message_id: 2,
+      date: 1730000000,
+      chat: { id: 77 },
+      from: { id: 88 },
+      voice: { file_id: "voice-1", file_unique_id: "vuniq-1", duration: 5 }
+    }
+  });
+}
+
 type WebhookResponse = {
   status: string;
   message: string;
 };
 
 describe("telegram webhook", () => {
-  it("processes first valid message", async () => {
+  it("queues text messages", async () => {
     vi.mocked(rateLimiter.checkRateLimit).mockResolvedValue(true);
-    vi.mocked(agent.classifyIntent).mockResolvedValue("log");
 
     const app = createApp();
     const { env, send } = createEnv({ duplicate: false });
@@ -150,15 +155,21 @@ describe("telegram webhook", () => {
 
     const json = (await response.json()) as WebhookResponse;
     expect(json.status).toBe("saved");
-    expect(send).toHaveBeenCalledTimes(1); // Webhook no longer sends "Saved" message
-    expect(fetchMock).toHaveBeenCalledTimes(0); // Webhook no longer calls Telegram API
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: expect.any(Number),
+        telegramId: 77,
+        text: "Lunch 10.00"
+      })
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(0);
 
     fetchMock.mockRestore();
   });
 
   it("does not enqueue duplicates", async () => {
     vi.mocked(rateLimiter.checkRateLimit).mockResolvedValue(true);
-    vi.mocked(agent.classifyIntent).mockResolvedValue("log");
 
     const app = createApp();
     const { env, send } = createEnv({ duplicate: true });
@@ -178,12 +189,40 @@ describe("telegram webhook", () => {
     const json = (await response.json()) as WebhookResponse;
     expect(json.status).toBe("duplicate");
     expect(send).not.toHaveBeenCalled();
-    expect(fetchMock).toHaveBeenCalledTimes(0); // Webhook no longer calls Telegram API
+    expect(fetchMock).toHaveBeenCalledTimes(0);
 
     fetchMock.mockRestore();
   });
 
-  it("uploads photo media to r2 and stores object key", async () => {
+  it("returns rate_limited on spam", async () => {
+    vi.mocked(rateLimiter.checkRateLimit).mockResolvedValue(false);
+
+    const app = createApp();
+    const { env, send } = createEnv({ duplicate: false });
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+
+    const response = await app.fetch(
+      new Request("http://localhost/webhook/telegram", {
+        method: "POST",
+        body: buildTextUpdateBody(),
+        headers: { "content-type": "application/json" }
+      }),
+      env
+    );
+
+    const json = (await response.json()) as WebhookResponse;
+    expect(json.status).toBe("rate_limited");
+    expect(response.status).toBe(429);
+    expect(send).not.toHaveBeenCalled();
+
+    fetchMock.mockRestore();
+  });
+
+  it("queues photo messages with media upload", async () => {
+    vi.mocked(rateLimiter.checkRateLimit).mockResolvedValue(true);
+
     const app = createApp();
     const { env, send, put, updateRun } = createEnv({ duplicate: false });
     const fetchMock = vi
@@ -206,8 +245,53 @@ describe("telegram webhook", () => {
     expect(response.status).toBe(200);
     expect(put).toHaveBeenCalledTimes(1);
     expect(updateRun).toHaveBeenCalledTimes(1);
-    expect(send).toHaveBeenCalledTimes(1); // Webhook no longer sends "Saved" message
-    expect(fetchMock).toHaveBeenCalledTimes(2); // Only getFile and downloadFile, no send message
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: expect.any(Number),
+        telegramId: 77,
+        mediaType: "photo",
+        r2ObjectKey: expect.any(String)
+      })
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(2); // getFile + downloadFile
+
+    fetchMock.mockRestore();
+  });
+
+  it("queues voice messages", async () => {
+    vi.mocked(rateLimiter.checkRateLimit).mockResolvedValue(true);
+
+    const app = createApp();
+    const { env, send } = createEnv({ duplicate: false });
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ ok: true, result: { file_path: "voice/voice-1.ogg" } }), { status: 200 })
+      )
+      .mockResolvedValueOnce(new Response(new Uint8Array([1, 2, 3]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+
+    const response = await app.fetch(
+      new Request("http://localhost/webhook/telegram", {
+        method: "POST",
+        body: buildVoiceUpdateBody(),
+        headers: { "content-type": "application/json" }
+      }),
+      env
+    );
+
+    const json = (await response.json()) as WebhookResponse;
+    expect(json.status).toBe("saved");
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: expect.any(Number),
+        telegramId: 77,
+        mediaType: "voice",
+        r2ObjectKey: expect.any(String)
+      })
+    );
 
     fetchMock.mockRestore();
   });
