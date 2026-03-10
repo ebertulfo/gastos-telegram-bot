@@ -54,44 +54,22 @@ export async function getExpenses(
 }
 
 export async function updateExpense(
-    env: Env,
-    userId: number,
+    db: D1Database,
     expenseId: number,
-    data: { amount_minor?: number; currency?: string; category?: string; tags?: string[] }
-): Promise<boolean> {
-    const updates: string[] = [];
-    const bindings: any[] = [];
+    userId: number,
+    updates: Record<string, unknown>
+): Promise<void> {
+    const keys = Object.keys(updates);
+    if (keys.length === 0) return;
 
-    if (data.amount_minor !== undefined) {
-        updates.push("amount_minor = ?");
-        bindings.push(data.amount_minor);
-    }
-    if (data.currency !== undefined) {
-        updates.push("currency = ?");
-        bindings.push(data.currency);
-    }
-    if (data.category !== undefined) {
-        updates.push("category = ?");
-        bindings.push(data.category);
-    }
-    if (data.tags !== undefined) {
-        updates.push("tags = ?");
-        bindings.push(JSON.stringify(data.tags));
-    }
+    const setClauses = keys.map((k) => `${k} = ?`);
+    const bindings = [...keys.map((k) => updates[k]), expenseId, userId];
 
-    if (updates.length === 0) return true;
+    const query = `UPDATE expenses SET ${setClauses.join(", ")} WHERE id = ? AND user_id = ?`;
 
-    // Always clear the needs_review status when manually updated
-    updates.push("status = 'final'");
-    bindings.push(expenseId, userId);
-
-    const query = `UPDATE expenses SET ${updates.join(", ")} WHERE id = ? AND user_id = ?`;
-
-    const result = await env.DB.prepare(query)
+    await db.prepare(query)
         .bind(...bindings)
         .run();
-
-    return result.meta.changes > 0;
 }
 
 export async function insertExpense(
@@ -126,16 +104,10 @@ export async function insertExpense(
     .run();
 }
 
-export async function deleteExpense(env: Env, userId: number, expenseId: number): Promise<boolean> {
-    // SQLite doesn't natively support ON DELETE CASCADE unless enabled, 
-    // but since Gastos appends rows, we just delete the expense itself.
-    // We leave the source_event and parse_result intact as audit trails.
-    const result = await env.DB.prepare(
-        `DELETE FROM expenses
-     WHERE id = ? AND user_id = ?`
+export async function deleteExpense(db: D1Database, expenseId: number, userId: number): Promise<void> {
+    await db.prepare(
+        `DELETE FROM expenses WHERE id = ? AND user_id = ?`
     )
         .bind(expenseId, userId)
         .run();
-
-    return result.meta.changes > 0;
 }

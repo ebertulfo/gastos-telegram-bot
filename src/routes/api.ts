@@ -109,16 +109,13 @@ apiRouter.put("/expenses/:id", async (c) => {
         return c.json({ error: "tags must be an array of strings" }, 400);
     }
 
-    const success = await updateExpense(c.env, c.get("userId"), expenseId, {
-        amount_minor,
-        currency,
-        category,
-        tags
-    });
+    const updateData: Record<string, unknown> = {};
+    if (amount_minor !== undefined) updateData.amount_minor = amount_minor;
+    if (currency !== undefined) updateData.currency = currency;
+    if (category !== undefined) updateData.category = category;
+    if (tags !== undefined) updateData.tags = JSON.stringify(tags);
 
-    if (!success) {
-        return c.json({ error: "Expense not found or update failed" }, 404);
-    }
+    await updateExpense(c.env.DB, expenseId, c.get("userId"), updateData);
 
     // M9: User Correction - Self Learning Flywheel (Background Sync)
     c.executionCtx.waitUntil((async () => {
@@ -164,11 +161,7 @@ apiRouter.delete("/expenses/:id", async (c) => {
 
     const expense = await c.env.DB.prepare(`SELECT source_event_id FROM expenses WHERE id = ?`).bind(expenseId).first<{ source_event_id: number }>();
 
-    const success = await deleteExpense(c.env, c.get("userId"), expenseId);
-
-    if (!success) {
-        return c.json({ error: "Expense not found or delete failed" }, 404);
-    }
+    await deleteExpense(c.env.DB, expenseId, c.get("userId"));
 
     if (expense) {
         c.executionCtx.waitUntil((async () => {
