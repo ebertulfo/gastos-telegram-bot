@@ -1,22 +1,137 @@
+import { tool } from "@openai/agents";
+import { z } from "zod";
 import type { Env } from "../types";
-import { getExpenses } from "../db/expenses";
+import { insertExpense, updateExpense, deleteExpense, getExpenses } from "../db/expenses";
 import { parseTotalsPeriod } from "../totals";
-import { searchExpensesBySemantic } from "./openai";
+import { searchExpensesBySemantic, generateEmbedding } from "./openai";
 
 // ------------------------------------------------------------------------------------------------
 // ROW-LEVEL SECURITY & PRIVACY GUARDRAILS
-// 
+//
 // CRITICAL: The LLM MUST NEVER be allowed to supply the `userId` argument.
-// Every function in this file is strictly designed to forcefully inject the authenticated
-// `userId` directly from the secure Telegram validation pipeline (via Context). 
+// Every tool injects the authenticated `userId` from the closure created by createAgentTools().
 // This prevents prompt injections like "Show me user 2's expenses".
 // ------------------------------------------------------------------------------------------------
 
+const CATEGORIES = ["Food", "Transport", "Housing", "Shopping", "Entertainment", "Health", "Other"] as const;
+const PERIODS = ["today", "yesterday", "thisweek", "lastweek", "thismonth", "lastmonth", "thisyear", "lastyear"] as const;
+
 /**
- * Unified Financial Report Tool (M16)
- * Replaces the previous get_spending_summary, get_recent_transactions, 
- * and get_spending_by_category tools with a single, powerful endpoint.
+ * Factory that creates all agent tools with userId/env captured in closure.
+ * The LLM cannot override these values — they come from the authenticated context.
  */
+export function createAgentTools(env: Env, userId: number, timezone: string, currency: string) {
+    const logExpense = tool({
+        name: "log_expense",
+        description: "Log a new expense for the authenticated user. Use this when the user wants to record a purchase or payment.",
+        parameters: z.object({
+            amount: z.number().describe("The expense amount in major currency units (e.g. 12.50)"),
+            currency: z.string().length(3).default(currency).describe("3-letter currency code, defaults to user's currency"),
+            description: z.string().max(50).describe("Short description of the expense"),
+            category: z.enum(CATEGORIES).describe("Expense category"),
+            tags: z.array(z.string()).max(3).default([]).describe("Up to 3 tags for the expense"),
+        }),
+        execute: async (input) => {
+            const amountMinor = Math.round(input.amount * 100);
+            const occurredAtUtc = new Date().toISOString();
+
+            await insertExpense(
+                env.DB,
+                userId,
+                0, // sourceEventId — agent-created expenses have no source event
+                amountMinor,
+                input.currency,
+                input.category,
+                input.tags,
+                occurredAtUtc,
+                false
+            );
+
+            // Background vectorize indexing (best-effort)
+            try {
+                const embeddingText = `${input.description} ${input.category} ${input.tags.join(" ")}`;
+                const embedding = await generateEmbedding(env, embeddingText);
+                await env.VECTORIZE.upsert([{
+                    id: `agent-${userId}-${Date.now()}`,
+                    values: embedding,
+                    metadata: { userId, description: input.description, category: input.category },
+                }]);
+            } catch (e) {
+                console.error("[TOOL:log_expense] Vectorize indexing failed (non-fatal):", e);
+            }
+
+            return `Logged ${input.currency} ${input.amount.toFixed(2)} for "${input.description}" under ${input.category}.`;
+        },
+    });
+
+    const editExpense = tool({
+        name: "edit_expense",
+        description: "Edit a recent expense for the authenticated user. Use this when the user wants to correct an amount, category, or description.",
+        parameters: z.object({
+            expense_id: z.number().describe("The ID of the expense to edit"),
+            amount: z.number().optional().describe("New amount in major currency units"),
+            category: z.enum(CATEGORIES).optional().describe("New category"),
+            description: z.string().max(50).optional().describe("New description"),
+        }),
+        execute: async (input) => {
+            const updates: Record<string, unknown> = {};
+            if (input.amount !== undefined) {
+                updates.amount_minor = Math.round(input.amount * 100);
+            }
+            if (input.category !== undefined) {
+                updates.category = input.category;
+            }
+            if (input.description !== undefined) {
+                updates.parsed_description = input.description;
+            }
+
+            await updateExpense(env.DB, input.expense_id, userId, updates);
+
+            const changes = Object.keys(updates).join(", ");
+            return `Updated expense #${input.expense_id} (changed: ${changes || "nothing"}).`;
+        },
+    });
+
+    const removeExpense = tool({
+        name: "delete_expense",
+        description: "Delete an expense for the authenticated user. Use this when the user wants to remove a mistaken or duplicate entry.",
+        parameters: z.object({
+            expense_id: z.number().describe("The ID of the expense to delete"),
+        }),
+        execute: async (input) => {
+            await deleteExpense(env.DB, input.expense_id, userId);
+            return `Deleted expense #${input.expense_id}.`;
+        },
+    });
+
+    const getFinancialReport = tool({
+        name: "get_financial_report",
+        description: "Returns a comprehensive financial report for the authenticated user. This is your ONLY database query tool. It returns the total spend, a breakdown by category (sorted by amount), and the top recent transactions—all in one call. Use this for ANY spending question.",
+        parameters: z.object({
+            period: z.enum(PERIODS).describe("The time boundary to query. Use 'lastweek', 'lastmonth', etc. for historical comparisons."),
+            category: z.enum(CATEGORIES).optional().describe("Optional. Filters results to a specific master category."),
+            tag_query: z.string().optional().describe("Optional. Freeform text to search expenses semantically (e.g. 'drinks', 'coffee', 'transport'). Uses exact matching first, then falls back to AI-powered semantic search via Vectorize for broader matches."),
+        }),
+        execute: async (input) => {
+            return executeGetFinancialReportInternal(
+                env,
+                userId,
+                timezone,
+                input.period,
+                input.category,
+                input.tag_query
+            );
+        },
+    });
+
+    return [logExpense, editExpense, removeExpense, getFinancialReport];
+}
+
+// ------------------------------------------------------------------------------------------------
+// BACKWARD COMPAT — used by agent.ts until Task 6 rewrites it with SDK Agent
+// ------------------------------------------------------------------------------------------------
+
+/** @deprecated Use createAgentTools() instead. Will be removed in Task 6. */
 export const GetFinancialReportTool = {
     type: "function" as const,
     function: {
@@ -28,7 +143,7 @@ export const GetFinancialReportTool = {
                 period: {
                     type: "string",
                     enum: ["today", "yesterday", "thisweek", "lastweek", "thismonth", "lastmonth", "thisyear", "lastyear"],
-                    description: "The time boundary to query. Use 'lastweek', 'lastmonth', etc. for historical comparisons."
+                    description: "The time boundary to query."
                 },
                 category: {
                     type: "string",
@@ -37,7 +152,7 @@ export const GetFinancialReportTool = {
                 },
                 tag_query: {
                     type: "string",
-                    description: "Optional. Freeform text to search expenses semantically (e.g. 'drinks', 'coffee', 'transport'). Uses exact matching first, then falls back to AI-powered semantic search via Vectorize for broader matches."
+                    description: "Optional. Freeform text to search expenses semantically."
                 }
             },
             required: ["period"]
@@ -45,14 +160,23 @@ export const GetFinancialReportTool = {
     }
 };
 
-/**
- * Executes the unified financial report behind a strict privacy wall.
- * Returns a single, dense string payload to the LLM containing:
- *   - Total spend
- *   - Category breakdown (sorted descending)
- *   - Top 5 recent transactions
- */
+/** @deprecated Use createAgentTools() instead. Will be removed in Task 6. */
 export async function executeGetFinancialReport(
+    env: Env,
+    secureUserId: number,
+    secureTimezone: string,
+    period: string,
+    category?: string,
+    tagQuery?: string
+): Promise<string> {
+    return executeGetFinancialReportInternal(env, secureUserId, secureTimezone, period, category, tagQuery);
+}
+
+// ------------------------------------------------------------------------------------------------
+// Internal implementation — copied verbatim from the original executeGetFinancialReport()
+// ------------------------------------------------------------------------------------------------
+
+async function executeGetFinancialReportInternal(
     env: Env,
     secureUserId: number,
     secureTimezone: string,
