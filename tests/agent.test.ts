@@ -1,0 +1,111 @@
+import { describe, expect, it, vi, beforeEach } from "vitest";
+
+// Mock the tools module before importing agent
+vi.mock("../src/ai/tools", () => ({
+    createAgentTools: vi.fn(() => [
+        { name: "log_expense" },
+        { name: "edit_expense" },
+        { name: "delete_expense" },
+        { name: "get_financial_report" },
+    ]),
+}));
+
+// Mock the Agent class
+vi.mock("@openai/agents", async (importOriginal) => {
+    const original = await importOriginal<typeof import("@openai/agents")>();
+    return {
+        ...original,
+        Agent: vi.fn().mockImplementation((config: any) => ({
+            name: config.name,
+            model: config.model,
+            instructions: config.instructions,
+            tools: config.tools,
+        })),
+    };
+});
+
+import { buildSystemPrompt, createGastosAgent } from "../src/ai/agent";
+import { Agent } from "@openai/agents";
+import type { Env } from "../src/types";
+
+describe("buildSystemPrompt", () => {
+    it("includes timezone in prompt", () => {
+        const prompt = buildSystemPrompt("Asia/Manila", "PHP");
+        expect(prompt).toContain("Asia/Manila");
+    });
+
+    it("includes currency in prompt", () => {
+        const prompt = buildSystemPrompt("America/New_York", "USD");
+        expect(prompt).toContain("USD");
+    });
+
+    it("includes tool names in instructions", () => {
+        const prompt = buildSystemPrompt("UTC", "EUR");
+        expect(prompt).toContain("log_expense");
+        expect(prompt).toContain("edit_expense");
+        expect(prompt).toContain("delete_expense");
+        expect(prompt).toContain("get_financial_report");
+    });
+
+    it("includes conciseness rules", () => {
+        const prompt = buildSystemPrompt("UTC", "USD");
+        expect(prompt).toContain("CONCISE");
+        expect(prompt).toContain("NEVER guess");
+    });
+
+    it("includes today's date", () => {
+        const prompt = buildSystemPrompt("UTC", "USD");
+        // Should contain a formatted date string (year at minimum)
+        const currentYear = new Date().getFullYear().toString();
+        expect(prompt).toContain(currentYear);
+    });
+});
+
+describe("createGastosAgent", () => {
+    beforeEach(() => {
+        vi.mocked(Agent).mockClear();
+    });
+
+    const mockEnv = {
+        OPENAI_API_KEY: "test-key",
+        DB: {} as D1Database,
+        VECTORIZE: {} as VectorizeIndex,
+    } as Env;
+
+    it("creates agent with name 'gastos'", () => {
+        createGastosAgent(mockEnv, 1, "UTC", "USD");
+        expect(Agent).toHaveBeenCalledWith(
+            expect.objectContaining({ name: "gastos" })
+        );
+    });
+
+    it("creates agent with model gpt-4.1-mini", () => {
+        createGastosAgent(mockEnv, 1, "UTC", "USD");
+        expect(Agent).toHaveBeenCalledWith(
+            expect.objectContaining({ model: "gpt-4.1-mini" })
+        );
+    });
+
+    it("creates agent with 4 tools", () => {
+        createGastosAgent(mockEnv, 1, "UTC", "USD");
+        expect(Agent).toHaveBeenCalledWith(
+            expect.objectContaining({
+                tools: expect.arrayContaining([
+                    expect.objectContaining({ name: "log_expense" }),
+                    expect.objectContaining({ name: "get_financial_report" }),
+                ]),
+            })
+        );
+        // Verify exactly 4 tools
+        const callArgs = vi.mocked(Agent).mock.calls[0][0] as any;
+        expect(callArgs.tools).toHaveLength(4);
+    });
+
+    it("passes system prompt as instructions string", () => {
+        createGastosAgent(mockEnv, 1, "Asia/Manila", "PHP");
+        const callArgs = vi.mocked(Agent).mock.calls[0][0] as any;
+        expect(typeof callArgs.instructions).toBe("string");
+        expect(callArgs.instructions).toContain("Asia/Manila");
+        expect(callArgs.instructions).toContain("PHP");
+    });
+});
