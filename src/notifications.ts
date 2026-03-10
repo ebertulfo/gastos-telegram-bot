@@ -167,7 +167,7 @@ async function getAiInsight(env: Env, summaryText: string): Promise<string | nul
         Authorization: `Bearer ${env.OPENAI_API_KEY}`,
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: "gpt-4.1-nano",
         max_tokens: 80,
         messages: [
           {

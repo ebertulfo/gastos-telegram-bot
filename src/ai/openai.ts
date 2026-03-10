@@ -236,7 +236,7 @@ async function callOpenAIExtraction(
   maxTokens?: number
 ): Promise<z.infer<typeof OpenAIResponseSchema> | null> {
   const body: Record<string, unknown> = {
-    model: env.OPENAI_VISION_MODEL ?? "gpt-4o-mini",
+    model: env.OPENAI_VISION_MODEL ?? "gpt-4.1-nano",
     messages,
     response_format: { type: "json_object" }
   };
