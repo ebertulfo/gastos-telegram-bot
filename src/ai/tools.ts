@@ -2,6 +2,7 @@ import { tool } from "@openai/agents";
 import { z } from "zod";
 import type { Env } from "../types";
 import { insertExpense, updateExpense, deleteExpense, getExpenses } from "../db/expenses";
+import { createAgentSourceEvent } from "../db/source-events";
 import { parseTotalsPeriod } from "../totals";
 import { searchExpensesBySemantic, generateEmbedding } from "./openai";
 
@@ -20,7 +21,7 @@ const PERIODS = ["today", "yesterday", "thisweek", "lastweek", "thismonth", "las
  * Factory that creates all agent tools with userId/env captured in closure.
  * The LLM cannot override these values — they come from the authenticated context.
  */
-export function createAgentTools(env: Env, userId: number, timezone: string, currency: string) {
+export function createAgentTools(env: Env, userId: number, telegramId: number, timezone: string, currency: string) {
     const logExpense = tool({
         name: "log_expense",
         description: "Log a new expense for the authenticated user. Use this when the user wants to record a purchase or payment.",
@@ -35,10 +36,18 @@ export function createAgentTools(env: Env, userId: number, timezone: string, cur
             const amountMinor = Math.round(input.amount * 100);
             const occurredAtUtc = new Date().toISOString();
 
+            // Create a real source event to avoid source_event_id=0 collision
+            const sourceEventId = await createAgentSourceEvent(
+                env.DB,
+                userId,
+                telegramId,
+                input.description,
+            );
+
             await insertExpense(
                 env.DB,
                 userId,
-                0, // sourceEventId — agent-created expenses have no source event
+                sourceEventId,
                 amountMinor,
                 input.currency,
                 input.category,

@@ -4,7 +4,7 @@ import { createGastosAgent } from "./ai/agent";
 import { D1Session } from "./ai/session";
 import { transcribeR2Audio } from "./ai/openai";
 import { sendTelegramChatMessage, sendChatAction } from "./telegram/messages";
-import { checkAndRefreshTokenQuota } from "./db/quotas";
+import { checkAndRefreshTokenQuota, incrementTokenUsage } from "./db/quotas";
 import type { Env, ParseQueueMessage } from "./types";
 
 export async function handleParseQueueBatch(
@@ -85,7 +85,7 @@ async function processMessage(
   }
 
   // 4. Create agent and session
-  const agent = createGastosAgent(env, userId, timezone, currency);
+  const agent = createGastosAgent(env, userId, telegramId, timezone, currency);
   const session = new D1Session(env.DB, userId);
 
   // 5. Run the agent
@@ -106,12 +106,20 @@ async function processMessage(
     }
   }
 
-  // 6. Send result to Telegram
-  if (result.finalOutput) {
-    await sendTelegramChatMessage(env, telegramId, result.finalOutput);
+  // 6. Increment token quota from actual usage
+  const totalTokens = result.rawResponses.reduce(
+    (sum, r) => sum + (r.usage?.totalTokens ?? 0),
+    0,
+  );
+  if (totalTokens > 0) {
+    await incrementTokenUsage(env.DB, userId, totalTokens);
   }
 
-  // 7. Flush traces in background
+  // 7. Send result to Telegram
+  const reply = result.finalOutput || "I couldn't process that. Please try again.";
+  await sendTelegramChatMessage(env, telegramId, reply);
+
+  // 8. Flush traces in background
   ctx.waitUntil(getGlobalTraceProvider().forceFlush());
 }
 

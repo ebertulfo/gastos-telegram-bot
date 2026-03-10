@@ -4,7 +4,10 @@ import type { Env, ParseQueueMessage } from "../src/types";
 
 // Mock the SDK
 vi.mock("@openai/agents", () => ({
-  run: vi.fn().mockResolvedValue({ finalOutput: "Logged: PHP 150.00 | Food | lunch" }),
+  run: vi.fn().mockResolvedValue({
+    finalOutput: "Logged: PHP 150.00 | Food | lunch",
+    rawResponses: [{ usage: { totalTokens: 500 } }],
+  }),
   getGlobalTraceProvider: vi.fn(() => ({ forceFlush: vi.fn().mockResolvedValue(undefined) })),
 }));
 
@@ -27,6 +30,7 @@ vi.mock("../src/telegram/messages", () => ({
 // Mock quotas
 vi.mock("../src/db/quotas", () => ({
   checkAndRefreshTokenQuota: vi.fn().mockResolvedValue(true),
+  incrementTokenUsage: vi.fn().mockResolvedValue(undefined),
 }));
 
 // Mock transcription

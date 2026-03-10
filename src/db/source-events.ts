@@ -97,6 +97,40 @@ export async function persistSourceEvent(
   }
 }
 
+/**
+ * Create a minimal source event for agent-created expenses (e.g. log_expense tool).
+ * Uses negative telegram_message_id to avoid collision with real Telegram messages.
+ */
+export async function createAgentSourceEvent(
+  db: D1Database,
+  userId: number,
+  telegramChatId: number,
+  description: string,
+): Promise<number> {
+  const now = new Date();
+  const result = await db.prepare(
+    `INSERT INTO source_events (
+      user_id, telegram_chat_id, telegram_message_id, file_unique_id,
+      message_type, text_raw, r2_object_key, received_at_utc, created_at_utc
+    ) VALUES (?, ?, ?, NULL, 'text', ?, NULL, ?, ?)
+    RETURNING id`
+  )
+    .bind(
+      userId,
+      telegramChatId,
+      -Date.now(), // negative to avoid collision with real Telegram message IDs
+      description,
+      now.toISOString(),
+      now.toISOString(),
+    )
+    .first<{ id: number }>();
+
+  if (!result?.id) {
+    throw new Error("Failed to create agent source event");
+  }
+  return result.id;
+}
+
 export async function setSourceEventR2ObjectKey(env: Env, sourceEventId: number, r2ObjectKey: string) {
   await env.DB.prepare(
     `UPDATE source_events

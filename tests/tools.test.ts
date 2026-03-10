@@ -23,6 +23,10 @@ vi.mock("../src/totals", () => ({
   parseTotalsPeriod: vi.fn().mockReturnValue("thismonth"),
 }));
 
+vi.mock("../src/db/source-events", () => ({
+  createAgentSourceEvent: vi.fn().mockResolvedValue(999),
+}));
+
 vi.mock("../src/ai/openai", () => ({
   searchExpensesBySemantic: vi.fn().mockResolvedValue([]),
   generateEmbedding: vi.fn().mockResolvedValue([0.1, 0.2, 0.3]),
@@ -52,12 +56,12 @@ describe("createAgentTools", () => {
   const currency = "PHP";
 
   it("returns exactly 4 tools", () => {
-    const tools = createAgentTools(createMockEnv(), userId, timezone, currency);
+    const tools = createAgentTools(createMockEnv(), userId, 12345, timezone, currency);
     expect(tools).toHaveLength(4);
   });
 
   it("returns tools with expected names", () => {
-    const tools = createAgentTools(createMockEnv(), userId, timezone, currency);
+    const tools = createAgentTools(createMockEnv(), userId, 12345, timezone, currency);
     const names = tools.map((t: any) => t.name);
     expect(names).toEqual([
       "log_expense",
@@ -68,7 +72,7 @@ describe("createAgentTools", () => {
   });
 
   it("every tool has a description and parameters", () => {
-    const tools = createAgentTools(createMockEnv(), userId, timezone, currency);
+    const tools = createAgentTools(createMockEnv(), userId, 12345, timezone, currency);
     for (const t of tools as any[]) {
       expect(t.description).toBeTruthy();
       expect(t.parameters).toBeTruthy();
@@ -76,7 +80,7 @@ describe("createAgentTools", () => {
   });
 
   it("log_expense execute returns confirmation string", async () => {
-    const tools = createAgentTools(createMockEnv(), userId, timezone, currency);
+    const tools = createAgentTools(createMockEnv(), userId, 12345, timezone, currency);
     const logTool = tools[0] as any;
     const result = await logTool.execute({
       amount: 150,
@@ -90,7 +94,7 @@ describe("createAgentTools", () => {
   });
 
   it("edit_expense execute returns confirmation string", async () => {
-    const tools = createAgentTools(createMockEnv(), userId, timezone, currency);
+    const tools = createAgentTools(createMockEnv(), userId, 12345, timezone, currency);
     const editTool = tools[1] as any;
     const result = await editTool.execute({
       expense_id: 1,
@@ -101,7 +105,7 @@ describe("createAgentTools", () => {
   });
 
   it("delete_expense execute returns confirmation string", async () => {
-    const tools = createAgentTools(createMockEnv(), userId, timezone, currency);
+    const tools = createAgentTools(createMockEnv(), userId, 12345, timezone, currency);
     const deleteTool = tools[2] as any;
     const result = await deleteTool.execute({
       expense_id: 5,

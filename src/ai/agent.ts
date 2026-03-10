@@ -41,8 +41,8 @@ RULES:
  * Creates a configured Gastos SDK Agent with tools bound to the authenticated user.
  * The agent handles both expense logging and financial Q&A in a unified flow.
  */
-export function createGastosAgent(env: Env, userId: number, timezone: string, currency: string) {
-    const tools = createAgentTools(env, userId, timezone, currency);
+export function createGastosAgent(env: Env, userId: number, telegramId: number, timezone: string, currency: string) {
+    const tools = createAgentTools(env, userId, telegramId, timezone, currency);
 
     return new Agent({
         name: "gastos",

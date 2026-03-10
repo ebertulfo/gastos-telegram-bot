@@ -73,21 +73,21 @@ describe("createGastosAgent", () => {
     } as Env;
 
     it("creates agent with name 'gastos'", () => {
-        createGastosAgent(mockEnv, 1, "UTC", "USD");
+        createGastosAgent(mockEnv, 1, 12345, "UTC", "USD");
         expect(Agent).toHaveBeenCalledWith(
             expect.objectContaining({ name: "gastos" })
         );
     });
 
     it("creates agent with model gpt-4.1-mini", () => {
-        createGastosAgent(mockEnv, 1, "UTC", "USD");
+        createGastosAgent(mockEnv, 1, 12345, "UTC", "USD");
         expect(Agent).toHaveBeenCalledWith(
             expect.objectContaining({ model: "gpt-4.1-mini" })
         );
     });
 
     it("creates agent with 4 tools", () => {
-        createGastosAgent(mockEnv, 1, "UTC", "USD");
+        createGastosAgent(mockEnv, 1, 12345, "UTC", "USD");
         expect(Agent).toHaveBeenCalledWith(
             expect.objectContaining({
                 tools: expect.arrayContaining([
@@ -102,7 +102,7 @@ describe("createGastosAgent", () => {
     });
 
     it("passes system prompt as instructions string", () => {
-        createGastosAgent(mockEnv, 1, "Asia/Manila", "PHP");
+        createGastosAgent(mockEnv, 1, 12345, "Asia/Manila", "PHP");
         const callArgs = vi.mocked(Agent).mock.calls[0][0] as any;
         expect(typeof callArgs.instructions).toBe("string");
         expect(callArgs.instructions).toContain("Asia/Manila");
