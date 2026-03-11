@@ -1,28 +1,66 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Drawer } from "vaul";
 import type { ExpenseWithDetails } from "../lib/types";
 import { getCategoryConfig, getAllKnownCategories } from "../lib/categories";
 import { formatAmountShort, parseTags } from "../lib/format";
 import { updateExpense, deleteExpense } from "../lib/api";
+import { TagInput } from "./TagInput";
 
 type EditDrawerProps = {
   expense: ExpenseWithDetails | null;
+  allTags: string[];
   onClose: () => void;
   onSaved: () => void;
 };
 
-export function EditDrawer({ expense, onClose, onSaved }: EditDrawerProps) {
+function toDateString(isoDate: string): string {
+  return isoDate.slice(0, 10);
+}
+
+function getPresets(): { label: string; value: string }[] {
+  const now = new Date();
+  const today = now.toISOString().slice(0, 10);
+  const yesterday = new Date(now.getTime() - 86400000).toISOString().slice(0, 10);
+  const twoDaysAgo = new Date(now.getTime() - 2 * 86400000).toISOString().slice(0, 10);
+  return [
+    { label: "Today", value: today },
+    { label: "Yesterday", value: yesterday },
+    { label: "2 days ago", value: twoDaysAgo },
+  ];
+}
+
+function formatDateDisplay(dateStr: string): string {
+  return new Date(dateStr + "T12:00:00Z").toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+export function EditDrawer({ expense, allTags, onClose, onSaved }: EditDrawerProps) {
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
+  const [date, setDate] = useState("");
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const open = expense !== null;
 
+  // Initialize form state when expense changes
+  useEffect(() => {
+    if (expense) {
+      setAmount(formatAmountShort(expense.amount_minor));
+      setCategory(expense.category);
+      setTags(parseTags(expense.tags));
+      setDate(toDateString(expense.occurred_at_utc));
+      setShowDatePicker(false);
+    }
+  }, [expense?.id]);
+
   const handleOpen = (isOpen: boolean) => {
     if (!isOpen) {
       onClose();
-      setAmount("");
-      setCategory("");
     }
   };
 
@@ -30,18 +68,20 @@ export function EditDrawer({ expense, onClose, onSaved }: EditDrawerProps) {
     if (!expense) return;
     setSaving(true);
     try {
-      const effectiveAmount = amount || formatAmountShort(expense.amount_minor);
-      const amountMinor = Math.round(parseFloat(effectiveAmount) * 100);
-      const effectiveCategory = category || expense.category;
-      await updateExpense(expense.id, amountMinor, expense.currency, effectiveCategory);
+      const amountMinor = Math.round(parseFloat(amount) * 100);
+      await updateExpense(expense.id, {
+        amount_minor: amountMinor,
+        currency: expense.currency,
+        category,
+        tags,
+        occurred_at_utc: date,
+      });
       onSaved();
       onClose();
     } catch (err) {
       console.error("Save failed:", err);
     } finally {
       setSaving(false);
-      setAmount("");
-      setCategory("");
     }
   };
 
@@ -56,12 +96,7 @@ export function EditDrawer({ expense, onClose, onSaved }: EditDrawerProps) {
     }
   };
 
-  // Initialize form values when expense appears
-  const displayAmount = amount || (expense ? formatAmountShort(expense.amount_minor) : "");
-  const displayCategory = category || (expense?.category ?? "");
-  const tags = expense ? parseTags(expense.tags) : [];
   const description = expense?.parsed_description || expense?.text_raw || "Unknown";
-  // Determine source type
   const sourceType = expense?.r2_object_key
     ? "photo"
     : expense?.text_raw
@@ -73,6 +108,8 @@ export function EditDrawer({ expense, onClose, onSaved }: EditDrawerProps) {
         minute: "2-digit",
       })
     : "";
+
+  const presets = getPresets().filter((p) => p.value !== date);
 
   return (
     <Drawer.Root open={open} onOpenChange={handleOpen}>
@@ -99,7 +136,7 @@ export function EditDrawer({ expense, onClose, onSaved }: EditDrawerProps) {
                     </div>
                   </div>
                   <div className="text-2xl font-bold" style={{ color: "var(--foreground)" }}>
-                    {expense.currency} {displayAmount}
+                    {expense.currency} {amount}
                   </div>
                 </div>
 
@@ -111,7 +148,7 @@ export function EditDrawer({ expense, onClose, onSaved }: EditDrawerProps) {
                       Category
                     </label>
                     <select
-                      value={displayCategory}
+                      value={category}
                       onChange={(e) => setCategory(e.target.value)}
                       className="w-full rounded-lg border px-3 py-2.5 text-sm"
                       style={{
@@ -136,22 +173,53 @@ export function EditDrawer({ expense, onClose, onSaved }: EditDrawerProps) {
                     <label className="mb-1 block text-[11px] uppercase tracking-wider" style={{ color: "var(--text-secondary)" }}>
                       Date
                     </label>
-                    <div
-                      className="rounded-lg border px-3 py-2.5 text-sm"
+                    <button
+                      onClick={() => setShowDatePicker(!showDatePicker)}
+                      className="w-full rounded-lg border px-3 py-2.5 text-left text-sm"
                       style={{
                         background: "var(--surface-hover)",
                         borderColor: "var(--border)",
                         color: "var(--foreground)",
                       }}
                     >
-                      {expense.occurred_at_utc
-                        ? new Date(expense.occurred_at_utc).toLocaleDateString("en-US", {
-                            weekday: "short",
-                            month: "short",
-                            day: "numeric",
-                          })
-                        : "Unknown"}
-                    </div>
+                      {date ? formatDateDisplay(date) : "Unknown"}
+                    </button>
+                    {showDatePicker && (
+                      <input
+                        type="date"
+                        value={date}
+                        onChange={(e) => {
+                          setDate(e.target.value);
+                          setShowDatePicker(false);
+                        }}
+                        className="mt-1.5 w-full rounded-lg border px-3 py-2.5 text-sm"
+                        style={{
+                          background: "var(--surface-hover)",
+                          borderColor: "var(--border)",
+                          color: "var(--foreground)",
+                        }}
+                      />
+                    )}
+                    {presets.length > 0 && (
+                      <div className="mt-1.5 flex gap-1.5">
+                        {presets.map((p) => (
+                          <button
+                            key={p.value}
+                            onClick={() => {
+                              setDate(p.value);
+                              setShowDatePicker(false);
+                            }}
+                            className="rounded-full px-2.5 py-1 text-[11px]"
+                            style={{
+                              background: "var(--surface)",
+                              color: "var(--text-secondary)",
+                            }}
+                          >
+                            {p.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   {/* Tags */}
@@ -159,22 +227,7 @@ export function EditDrawer({ expense, onClose, onSaved }: EditDrawerProps) {
                     <label className="mb-1 block text-[11px] uppercase tracking-wider" style={{ color: "var(--text-secondary)" }}>
                       Tags
                     </label>
-                    <div className="flex flex-wrap gap-1.5">
-                      {tags.map((tag) => (
-                        <span
-                          key={tag}
-                          className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs"
-                          style={{ background: "var(--surface)", color: "var(--text-secondary)" }}
-                        >
-                          #{tag}
-                        </span>
-                      ))}
-                      {tags.length === 0 && (
-                        <span className="text-xs" style={{ color: "var(--text-secondary)" }}>
-                          No tags
-                        </span>
-                      )}
-                    </div>
+                    <TagInput tags={tags} allTags={allTags} onChange={setTags} />
                   </div>
 
                   {/* Amount */}
@@ -196,7 +249,7 @@ export function EditDrawer({ expense, onClose, onSaved }: EditDrawerProps) {
                       <input
                         type="number"
                         step="0.01"
-                        value={displayAmount}
+                        value={amount}
                         onChange={(e) => setAmount(e.target.value)}
                         className="flex-1 rounded-lg border px-3 py-2.5 text-sm"
                         style={{
