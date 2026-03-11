@@ -6,6 +6,7 @@ import { handleOnboardingOrCommand } from "../onboarding";
 import { checkRateLimit } from "../rate-limiter";
 import { sendTelegramChatMessage } from "../telegram/messages";
 import { uploadTelegramMediaToR2 } from "../telegram/media";
+import { Tracer } from "../tracer";
 import config from "../config.json";
 import type { Env, ParseQueueMessage, TelegramUpdate } from "../types";
 
@@ -66,79 +67,101 @@ export async function handleTelegramWebhook(c: Context<{ Bindings: Env }>) {
     return c.json({ status: "ignored", message: "Unsupported update type" }, 200);
   }
 
-  const update = payload.data as TelegramUpdate;
-  const handled = await handleOnboardingOrCommand(c.env, update);
-  if (handled) {
-    return c.json({ status: "handled", message: "Message handled by command/onboarding flow" }, 200);
-  }
+  const traceId = crypto.randomUUID();
+  const tracer = c.env.TRACES_KV ? new Tracer(c.env.DB, c.env.TRACES_KV) : null;
 
-  // If we reach here, it must be an expense ingestion message.
-  // We don't ingest callback queries as expenses.
-  if (!update.message) {
-    return c.json({ status: "ignored", message: "Unhandled callback query" }, 200);
-  }
+  const handleValidPayload = async () => {
+    const update = payload.data as TelegramUpdate;
+    const handled = await handleOnboardingOrCommand(c.env, update);
+    if (handled) {
+      return c.json({ status: "handled", message: "Message handled by command/onboarding flow" }, 200);
+    }
 
-  const chatId = update.message.chat.id;
-  const telegramUserId = update.message.from?.id ?? chatId;
+    // If we reach here, it must be an expense ingestion message.
+    // We don't ingest callback queries as expenses.
+    if (!update.message) {
+      return c.json({ status: "ignored", message: "Unhandled callback query" }, 200);
+    }
 
-  // Admin Check: Drop banned users instantly
-  if ((config.admin.banned_telegram_ids as number[]).includes(telegramUserId)) {
-    return c.json({ status: "ignored", message: "User is banned by config" }, 200);
-  }
+    const chatId = update.message.chat.id;
+    const telegramUserId = update.message.from?.id ?? chatId;
 
-  const user = await upsertUserForIngestion(c.env, telegramUserId, chatId);
+    // Admin Check: Drop banned users instantly
+    if ((config.admin.banned_telegram_ids as number[]).includes(telegramUserId)) {
+      return c.json({ status: "ignored", message: "User is banned by config" }, 200);
+    }
 
-  // Rate limit check for all message types
-  const allowed = await checkRateLimit(c.env, telegramUserId);
-  if (!allowed) {
-    await sendTelegramChatMessage(c.env, chatId, "⏳ You are sending messages too fast. Please wait a bit.");
-    return c.json({ status: "rate_limited" }, 429);
-  }
+    const user = await upsertUserForIngestion(c.env, telegramUserId, chatId);
 
-  const sourceEvent = await persistSourceEvent(c.env, user.id, update);
-  let uploadedR2ObjectKey: string | null = null;
+    // Rate limit check for all message types
+    const allowed = await checkRateLimit(c.env, telegramUserId);
+    if (!allowed) {
+      await sendTelegramChatMessage(c.env, chatId, "⏳ You are sending messages too fast. Please wait a bit.");
+      return c.json({ status: "rate_limited" }, 429);
+    }
 
-  if (!sourceEvent.duplicate) {
-    try {
-      uploadedR2ObjectKey = await uploadTelegramMediaToR2(c.env, update, sourceEvent.id);
-      if (uploadedR2ObjectKey) {
-        await setSourceEventR2ObjectKey(c.env, sourceEvent.id, uploadedR2ObjectKey);
+    const sourceEvent = await persistSourceEvent(c.env, user.id, update);
+    let uploadedR2ObjectKey: string | null = null;
+
+    if (!sourceEvent.duplicate) {
+      try {
+        if (tracer) {
+          uploadedR2ObjectKey = await tracer.span(traceId, "webhook.media_upload", user.id, async () => {
+            return uploadTelegramMediaToR2(c.env, update, sourceEvent.id);
+          });
+        } else {
+          uploadedR2ObjectKey = await uploadTelegramMediaToR2(c.env, update, sourceEvent.id);
+        }
+        if (uploadedR2ObjectKey) {
+          await setSourceEventR2ObjectKey(c.env, sourceEvent.id, uploadedR2ObjectKey);
+        }
+      } catch (error) {
+        console.error("Media upload failed", {
+          sourceEventId: sourceEvent.id,
+          error: error instanceof Error ? error.message : String(error)
+        });
       }
-    } catch (error) {
-      console.error("Media upload failed", {
-        sourceEventId: sourceEvent.id,
-        error: error instanceof Error ? error.message : String(error)
+    }
+
+    if (sourceEvent.duplicate) {
+      console.warn("Duplicate Telegram payload received", {
+        chatId,
+        messageId: update.message.message_id,
+        sourceEventId: sourceEvent.id
       });
     }
-  }
 
-  if (sourceEvent.duplicate) {
-    console.warn("Duplicate Telegram payload received", {
-      chatId,
-      messageId: update.message.message_id,
-      sourceEventId: sourceEvent.id
-    });
-  }
+    const queueMessage: ParseQueueMessage = {
+      traceId,
+      userId: user.id,
+      telegramId: chatId,
+      timezone: user.timezone ?? "UTC",
+      currency: user.currency ?? "PHP",
+      tier: user.tier,
+      text: update.message.text,
+      r2ObjectKey: uploadedR2ObjectKey ?? undefined,
+      mediaType: update.message.photo ? "photo" : update.message.voice ? "voice" : undefined
+    };
 
-  const queueMessage: ParseQueueMessage = {
-    userId: user.id,
-    telegramId: chatId,
-    timezone: user.timezone ?? "UTC",
-    currency: user.currency ?? "PHP",
-    tier: user.tier,
-    text: update.message.text,
-    r2ObjectKey: uploadedR2ObjectKey ?? undefined,
-    mediaType: update.message.photo ? "photo" : update.message.voice ? "voice" : undefined
+    if (!sourceEvent.duplicate) {
+      await c.env.INGEST_QUEUE.send(queueMessage);
+    }
+
+    return c.json(
+      sourceEvent.duplicate
+        ? { status: "duplicate" }
+        : { status: "saved" },
+      200
+    );
   };
 
-  if (!sourceEvent.duplicate) {
-    await c.env.INGEST_QUEUE.send(queueMessage);
+  if (tracer) {
+    const userId = payload.data.message?.from?.id ?? payload.data.callback_query?.from?.id ?? null;
+    const messageType = payload.data.message?.photo ? "photo" : payload.data.message?.voice ? "voice" : "text";
+    const response = await tracer.span(traceId, "webhook.receive", userId, handleValidPayload, { messageType });
+    c.executionCtx.waitUntil(tracer.flush());
+    return response;
+  } else {
+    return handleValidPayload();
   }
-
-  return c.json(
-    sourceEvent.duplicate
-      ? { status: "duplicate" }
-      : { status: "saved" },
-    200
-  );
 }
