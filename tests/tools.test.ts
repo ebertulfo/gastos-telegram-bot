@@ -13,7 +13,7 @@ vi.mock("@openai/agents", () => ({
 
 // Mock DB functions
 vi.mock("../src/db/expenses", () => ({
-  insertExpense: vi.fn().mockResolvedValue(undefined),
+  insertExpense: vi.fn().mockResolvedValue(1),
   updateExpense: vi.fn().mockResolvedValue(undefined),
   deleteExpense: vi.fn().mockResolvedValue(undefined),
   getExpenses: vi.fn().mockResolvedValue([]),
@@ -111,5 +111,70 @@ describe("createAgentTools", () => {
       expense_id: 5,
     });
     expect(result).toContain("5");
+  });
+
+  it("edit_expense maps description to valid expenses columns only", async () => {
+    const { updateExpense } = await import("../src/db/expenses");
+    const tools = createAgentTools(createMockEnv(), userId, 12345, timezone, currency);
+    const editTool = tools[1] as any;
+    await editTool.execute({
+      expense_id: 1,
+      amount: 17.2,
+      category: null,
+      description: "Lunch updated",
+    });
+    // Should NOT pass 'parsed_description' — that column doesn't exist on expenses table
+    // Should pass only columns that exist: amount_minor, category, tags
+    const calls = vi.mocked(updateExpense).mock.calls;
+    const updates = calls[calls.length - 1][3];
+    expect(updates).not.toHaveProperty("parsed_description");
+    expect(updates).toHaveProperty("amount_minor", 1720);
+  });
+
+  it("log_expense returns the new expense ID", async () => {
+    const { insertExpense } = await import("../src/db/expenses");
+    // Mock insertExpense to return an ID
+    vi.mocked(insertExpense).mockResolvedValueOnce(42);
+
+    const tools = createAgentTools(createMockEnv(), userId, 12345, timezone, currency);
+    const logTool = tools[0] as any;
+    const result = await logTool.execute({
+      amount: 18,
+      currency: "SGD",
+      description: "Lunch",
+      category: "Food",
+      tags: ["lunch"],
+    });
+    expect(result).toContain("ID");
+  });
+
+  it("get_financial_report includes expense IDs in output", async () => {
+    const { getExpenses } = await import("../src/db/expenses");
+    vi.mocked(getExpenses).mockResolvedValueOnce([
+      {
+        id: 77,
+        source_event_id: 100,
+        amount_minor: 1800,
+        currency: "SGD",
+        occurred_at_utc: "2026-03-10T04:07:00Z",
+        status: "final",
+        category: "Food",
+        tags: '["lunch"]',
+        text_raw: null,
+        r2_object_key: null,
+        needs_review_reason: false,
+        parsed_description: "Lunch",
+      },
+    ]);
+
+    const tools = createAgentTools(createMockEnv(), userId, 12345, timezone, currency);
+    const reportTool = tools[3] as any;
+    const result = await reportTool.execute({
+      period: "today",
+      category: null,
+      tag_query: null,
+    });
+    // The report should include expense IDs so the agent can use edit_expense/delete_expense
+    expect(result).toContain("#77");
   });
 });

@@ -44,7 +44,7 @@ export function createAgentTools(env: Env, userId: number, telegramId: number, t
                 input.description,
             );
 
-            await insertExpense(
+            const expenseId = await insertExpense(
                 env.DB,
                 userId,
                 sourceEventId,
@@ -69,7 +69,7 @@ export function createAgentTools(env: Env, userId: number, telegramId: number, t
                 console.error("[TOOL:log_expense] Vectorize indexing failed (non-fatal):", e);
             }
 
-            return `Logged ${input.currency} ${input.amount.toFixed(2)} for "${input.description}" under ${input.category}.`;
+            return `Logged ${input.currency} ${input.amount.toFixed(2)} for "${input.description}" under ${input.category}. (ID #${expenseId})`;
         },
     });
 
@@ -78,21 +78,20 @@ export function createAgentTools(env: Env, userId: number, telegramId: number, t
         description: "Edit a recent expense for the authenticated user. Use this when the user wants to correct an amount, category, or description.",
         parameters: z.object({
             expense_id: z.number().describe("The ID of the expense to edit"),
-            amount: z.number().optional().describe("New amount in major currency units"),
-            category: z.enum(CATEGORIES).optional().describe("New category"),
-            description: z.string().max(50).optional().describe("New description"),
+            amount: z.number().nullable().describe("New amount in major currency units, or null to keep unchanged"),
+            category: z.enum(CATEGORIES).nullable().describe("New category, or null to keep unchanged"),
+            description: z.string().max(50).nullable().describe("New description, or null to keep unchanged"),
         }),
         execute: async (input) => {
             const updates: Record<string, unknown> = {};
-            if (input.amount !== undefined) {
+            if (input.amount !== null) {
                 updates.amount_minor = Math.round(input.amount * 100);
             }
-            if (input.category !== undefined) {
+            if (input.category !== null) {
                 updates.category = input.category;
             }
-            if (input.description !== undefined) {
-                updates.parsed_description = input.description;
-            }
+            // Note: description is not stored on the expenses table directly.
+            // It lives in parse_results.parsed_json. We skip it here.
 
             await updateExpense(env.DB, input.expense_id, userId, updates);
 
@@ -118,8 +117,8 @@ export function createAgentTools(env: Env, userId: number, telegramId: number, t
         description: "Returns a comprehensive financial report for the authenticated user. This is your ONLY database query tool. It returns the total spend, a breakdown by category (sorted by amount), and the top recent transactions—all in one call. Use this for ANY spending question.",
         parameters: z.object({
             period: z.enum(PERIODS).describe("The time boundary to query. Use 'lastweek', 'lastmonth', etc. for historical comparisons."),
-            category: z.enum(CATEGORIES).optional().describe("Optional. Filters results to a specific master category."),
-            tag_query: z.string().optional().describe("Optional. Freeform text to search expenses semantically (e.g. 'drinks', 'coffee', 'transport'). Uses exact matching first, then falls back to AI-powered semantic search via Vectorize for broader matches."),
+            category: z.enum(CATEGORIES).nullable().describe("Filters results to a specific master category, or null for all categories."),
+            tag_query: z.string().nullable().describe("Freeform text to search expenses semantically (e.g. 'drinks', 'coffee', 'transport'), or null for no filter. Uses exact matching first, then falls back to AI-powered semantic search via Vectorize for broader matches."),
         }),
         execute: async (input) => {
             return executeGetFinancialReportInternal(
@@ -127,8 +126,8 @@ export function createAgentTools(env: Env, userId: number, telegramId: number, t
                 userId,
                 timezone,
                 input.period,
-                input.category,
-                input.tag_query
+                input.category ?? undefined,
+                input.tag_query ?? undefined
             );
         },
     });
@@ -275,7 +274,7 @@ async function executeGetFinancialReportInternal(
                 tags = ` [${parsed.join(", ")}]`;
             }
         } catch { /* ignore */ }
-        return `- ${e.occurred_at_utc}: ${e.currency} ${major} | ${e.category} | ${desc}${tags}`;
+        return `- #${e.id} ${e.occurred_at_utc}: ${e.currency} ${major} | ${e.category} | ${desc}${tags}`;
     });
 
     // --- Assemble payload ---

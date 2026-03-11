@@ -82,8 +82,8 @@ export async function insertExpense(
   tags: string[],
   occurredAtUtc: string,
   needsReview: boolean
-): Promise<void> {
-  await db.prepare(
+): Promise<number> {
+  const result = await db.prepare(
     `INSERT INTO expenses (
        user_id, source_event_id, amount_minor, currency,
        category, tags, occurred_at_utc, status, created_at_utc
@@ -102,6 +102,8 @@ export async function insertExpense(
       new Date().toISOString()
     )
     .run();
+
+  return result.meta.last_row_id as number;
 }
 
 export async function deleteExpense(db: D1Database, expenseId: number, userId: number): Promise<void> {
