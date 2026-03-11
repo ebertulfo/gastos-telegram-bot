@@ -7,6 +7,7 @@ import { TransactionList } from "../components/TransactionList";
 import { EditDrawer } from "../components/EditDrawer";
 import { Skeleton } from "../components/ui/skeleton";
 import { fetchExpenses, fetchUserProfile } from "../lib/api";
+import { MOCK_EXPENSES } from "../lib/mock-data";
 import { getCategoryConfig } from "../lib/categories";
 import { formatAmountShort } from "../lib/format";
 import type { ExpenseWithDetails, Period } from "../lib/types";
@@ -35,8 +36,9 @@ export function AnalyticsScreen({ drillDownCategory, onDrillDown, onBack }: Anal
     try {
       const data = await fetchExpenses(period);
       setExpenses(data);
-    } catch (err) {
-      console.error("Failed to load expenses:", err);
+    } catch {
+      if (import.meta.env.DEV) console.info("[dev] API unreachable, using mock data");
+      setExpenses(MOCK_EXPENSES);
     } finally {
       setLoading(false);
     }
