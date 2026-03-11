@@ -177,4 +177,46 @@ describe("createAgentTools", () => {
     // The report should include expense IDs so the agent can use edit_expense/delete_expense
     expect(result).toContain("#77");
   });
+
+  it("log_expense uses occurred_at date when provided", async () => {
+    const { insertExpense } = await import("../src/db/expenses");
+    vi.mocked(insertExpense).mockResolvedValueOnce(50);
+
+    const tools = createAgentTools(createMockEnv(), userId, 12345, timezone, currency);
+    const logTool = tools[0] as any;
+    await logTool.execute({
+      amount: 18,
+      currency: "SGD",
+      description: "Lunch",
+      category: "Food",
+      tags: ["lunch"],
+      occurred_at: "2026-03-10",
+    });
+
+    const calls = vi.mocked(insertExpense).mock.calls;
+    const occurredAtUtc = calls[calls.length - 1][7] as string;
+    // Should use the provided date, not "now"
+    expect(occurredAtUtc).toContain("2026-03-10");
+  });
+
+  it("log_expense defaults to now when occurred_at is not provided", async () => {
+    const { insertExpense } = await import("../src/db/expenses");
+    vi.mocked(insertExpense).mockResolvedValueOnce(51);
+
+    const tools = createAgentTools(createMockEnv(), userId, 12345, timezone, currency);
+    const logTool = tools[0] as any;
+    await logTool.execute({
+      amount: 5,
+      currency: "SGD",
+      description: "Coffee",
+      category: "Food",
+      tags: [],
+    });
+
+    const calls = vi.mocked(insertExpense).mock.calls;
+    const occurredAtUtc = calls[calls.length - 1][7] as string;
+    // Should be today's date
+    const today = new Date().toISOString().slice(0, 10);
+    expect(occurredAtUtc).toContain(today);
+  });
 });

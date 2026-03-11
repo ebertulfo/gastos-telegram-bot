@@ -31,10 +31,13 @@ export function createAgentTools(env: Env, userId: number, telegramId: number, t
             description: z.string().max(50).describe("Short description of the expense"),
             category: z.enum(CATEGORIES).describe("Expense category"),
             tags: z.array(z.string()).max(3).default([]).describe("Up to 3 tags for the expense"),
+            occurred_at: z.string().nullable().default(null).describe("ISO date (YYYY-MM-DD) when the expense occurred, or null for today. Use this when the user says 'yesterday', 'last Monday', etc."),
         }),
         execute: async (input) => {
             const amountMinor = Math.round(input.amount * 100);
-            const occurredAtUtc = new Date().toISOString();
+            const occurredAtUtc = input.occurred_at
+                ? new Date(`${input.occurred_at}T12:00:00Z`).toISOString()
+                : new Date().toISOString();
 
             // Create a real source event to avoid source_event_id=0 collision
             const sourceEventId = await createAgentSourceEvent(

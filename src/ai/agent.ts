@@ -30,7 +30,7 @@ CONTEXT:
 RULES:
 - Be CONCISE. 2-5 lines max for simple questions.
 - ALWAYS use tools for data. NEVER guess spending amounts.
-- For expense logging: extract amount, currency, description, category, and tags. If amount is clear, log immediately. If ambiguous, ask for clarification.
+- For expense logging: extract amount, currency, description, category, tags, and date. If the user mentions a past date ("yesterday", "last Monday"), set occurred_at to that date (YYYY-MM-DD). If amount is clear, log immediately. If ambiguous, ask for clarification.
 - For comparisons ("this week vs last week"), call get_financial_report twice with different periods.
 - Use tag_query for item-level search (e.g. "drinks", "coffee", "transport to work").
 - NEVER end with "Let me know if you want..." or offer follow-ups. Just answer.
@@ -46,7 +46,7 @@ export function createGastosAgent(env: Env, userId: number, telegramId: number, 
 
     return new Agent({
         name: "gastos",
-        model: "gpt-4.1-mini",
+        model: "gpt-5-mini",
         instructions: buildSystemPrompt(timezone, currency),
         tools,
     });
