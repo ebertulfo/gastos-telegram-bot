@@ -56,7 +56,7 @@
 **Context:** Need a model for intent classification, expense extraction, and conversational chat. Both OpenAI and Anthropic offer capable models.
 **Options considered:** OpenAI (GPT-4o, GPT-4o-mini), Anthropic (Claude Sonnet/Haiku), open-source (Llama via Workers AI)
 **Choice:** Had $10 in OpenAI API credits laying around from previous experiments. That's really it. Had been impressed by their Agents SDK during earlier experimentation. Other providers have comparable or even better agent frameworks, but OpenAI was good enough — especially with unused credits already purchased.
-**Outcome:** Using gpt-4o-mini for most tasks (cost-effective), gpt-4o for semantic chat (quality), whisper-1 for voice transcription, text-embedding-3-small for semantic search. OpenAI Agents SDK for structured tool calling and session management.
+**Outcome:** Using gpt-5-mini for the main agent loop (cost-effective), gpt-4o-mini for vision extraction (receipt photos), whisper-1 for voice transcription, text-embedding-3-small for semantic search. OpenAI Agents SDK for structured tool calling and session management.
 
 ### Decision: Inject userId via closures, never from LLM
 **Context:** AI tools like `log_expense` need to know which user is logging the expense. If the LLM provides the userId, a prompt injection could log expenses to another user's account.
@@ -140,4 +140,4 @@
 **Context:** Running an AI-powered product means every user interaction has a real cost (OpenAI API tokens).
 **Options considered:** Absorb all costs, charge users immediately, freemium with quotas
 **Choice:** The bot must be able to sustain itself. Running AI-enabled features isn't free, and to keep it operational and working for people, it needs a path to self-sustainability. Plan: introduce premium features. Free tier covers basic usage; premium unlocks higher quotas and advanced features. Multi-layered cost controls keep the free tier sustainable.
-**Outcome:** Multi-layered: (1) gpt-4o-mini for most tasks (cheap), (2) daily token quotas per user, (3) rate limiting, (4) selective Vectorize indexing (only text, not photos/voice). Free tier is sustainable; premium tier offsets costs.
+**Outcome:** Multi-layered: (1) gpt-5-mini for most tasks (cheap), (2) daily token quotas per user, (3) rate limiting, (4) selective Vectorize indexing (only text, not photos/voice). Free tier is sustainable; premium tier offsets costs.

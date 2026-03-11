@@ -6,7 +6,7 @@ Gastos is an AI-powered expense tracker on Telegram. But this isn't a story abou
 
 There's a phrase I keep coming back to: **agentic engineering**. It's not just "vibe coding" or "AI-assisted development." It's a specific thing.
 
-Gastos uses OpenAI's GPT-4o to classify user intent, extract expenses from receipts, and answer questions about spending patterns. That's the product layer. But the same kind of AI — Claude, specifically — helped architect the queue system, implement the database migrations, write the test suite, and deploy the whole thing to Cloudflare Workers.
+Gastos uses OpenAI's models to classify user intent, extract expenses from receipts, and answer questions about spending patterns. That's the product layer. But the same kind of AI — Claude, specifically — helped architect the queue system, implement the database migrations, write the test suite, and deploy the whole thing to Cloudflare Workers.
 
 The AI that powers the bot was also the AI that helped build the bot.
 
@@ -63,7 +63,7 @@ Each subagent has its own context — its own focused set of docs and instructio
 
 Then I added a **workflow state tracker** — a JSON file at `/tmp/gastos-workflow-state.json` that tracks which pipeline steps have been completed for the current task. Pre-commit hooks block the commit if tests haven't passed. Pre-deploy hooks block deployment if verification is incomplete. Warning hooks flag if code review or simplification steps were skipped.
 
-([Decision journal: custom skills, subagents, and workflow hooks](decision-journal.md#decision-build-custom-skills-subagents-and-workflow-hooks))
+([Decision journal: custom skills, subagents, and workflow hooks](../decision-journal.md#decision-build-custom-skills-subagents-and-workflow-hooks))
 
 Is this over-engineered? Maybe. But it works. And more importantly, it compounds.
 
@@ -77,7 +77,7 @@ Then I decided to migrate to OpenAI's Agents SDK, which handles all of that for 
 
 The migration took **1 hour** to get working, plus **30 minutes** to debug.
 
-([Decision journal: OpenAI Agents SDK migration](decision-journal.md#decision-openai-agents-sdk-over-raw-chat-completions))
+([Decision journal: OpenAI Agents SDK migration](../decision-journal.md#decision-openai-agents-sdk-over-raw-chat-completions))
 
 That's fast for a migration that touches the core AI pipeline of the entire product. But the speed wasn't because the task was simple — it's because the infrastructure was already there. The task size assessment skill told Claude Code this was a "large" task, which triggered the full pipeline: brainstorm, plan, worktree, TDD, verification, review. The Cloudflare specialist handled questions about queue integration. The OpenAI specialist knew the Agents SDK patterns. The state tracker ensured every step completed before deployment.
 
