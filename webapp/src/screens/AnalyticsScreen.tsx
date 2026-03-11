@@ -6,8 +6,8 @@ import { CategoryList, type CategoryTotal } from "../components/CategoryList";
 import { TransactionList } from "../components/TransactionList";
 import { EditDrawer } from "../components/EditDrawer";
 import { Skeleton } from "../components/ui/skeleton";
-import { fetchExpenses, fetchUserProfile } from "../lib/api";
-import { MOCK_EXPENSES } from "../lib/mock-data";
+import { fetchExpenses, fetchUserProfile, fetchUserTags } from "../lib/api";
+import { MOCK_EXPENSES, MOCK_TAGS } from "../lib/mock-data";
 import { getCategoryConfig } from "../lib/categories";
 import { formatAmountShort } from "../lib/format";
 import type { ExpenseWithDetails, Period } from "../lib/types";
@@ -30,6 +30,7 @@ export function AnalyticsScreen({ drillDownCategory, onDrillDown, onBack }: Anal
   const [loading, setLoading] = useState(true);
   const [currency, setCurrency] = useState("SGD");
   const [selectedExpense, setSelectedExpense] = useState<ExpenseWithDetails | null>(null);
+  const [allTags, setAllTags] = useState<string[]>([]);
 
   const loadExpenses = useCallback(async () => {
     setLoading(true);
@@ -51,7 +52,18 @@ export function AnalyticsScreen({ drillDownCategory, onDrillDown, onBack }: Anal
   }, []);
 
   useEffect(() => {
+    fetchUserTags().then(setAllTags).catch(() => {
+      if (import.meta.env.DEV) setAllTags(MOCK_TAGS);
+    });
+  }, []);
+
+  useEffect(() => {
     loadExpenses();
+  }, [loadExpenses]);
+
+  const handleSaved = useCallback(() => {
+    loadExpenses();
+    fetchUserTags().then(setAllTags).catch(() => {});
   }, [loadExpenses]);
 
   // Compute category totals
@@ -100,8 +112,9 @@ export function AnalyticsScreen({ drillDownCategory, onDrillDown, onBack }: Anal
         <TransactionList expenses={filtered} onSelectExpense={setSelectedExpense} />
         <EditDrawer
           expense={selectedExpense}
+          allTags={allTags}
           onClose={() => setSelectedExpense(null)}
-          onSaved={loadExpenses}
+          onSaved={handleSaved}
         />
       </>
     );
@@ -143,8 +156,9 @@ export function AnalyticsScreen({ drillDownCategory, onDrillDown, onBack }: Anal
 
       <EditDrawer
         expense={selectedExpense}
+        allTags={allTags}
         onClose={() => setSelectedExpense(null)}
-        onSaved={loadExpenses}
+        onSaved={handleSaved}
       />
     </>
   );

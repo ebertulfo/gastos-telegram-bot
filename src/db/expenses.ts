@@ -113,3 +113,24 @@ export async function deleteExpense(db: D1Database, expenseId: number, userId: n
         .bind(expenseId, userId)
         .run();
 }
+
+export async function getUserTags(db: D1Database, userId: number): Promise<string[]> {
+    const { results } = await db.prepare(
+        `SELECT tags FROM expenses WHERE user_id = ? AND tags != '[]'`
+    )
+        .bind(userId)
+        .all<{ tags: string }>();
+
+    const tagSet = new Set<string>();
+    for (const row of results ?? []) {
+        try {
+            const parsed = JSON.parse(row.tags);
+            if (Array.isArray(parsed)) {
+                for (const tag of parsed) tagSet.add(tag);
+            }
+        } catch {
+            // skip malformed JSON
+        }
+    }
+    return Array.from(tagSet).sort();
+}

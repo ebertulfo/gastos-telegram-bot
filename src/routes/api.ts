@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { validateTelegramInitData } from "../telegram/auth";
-import { getExpenses, updateExpense, deleteExpense } from "../db/expenses";
+import { getExpenses, updateExpense, deleteExpense, getUserTags } from "../db/expenses";
 import { parseTotalsPeriod } from "../totals";
 import type { Env } from "../types";
 
@@ -84,6 +84,11 @@ apiRouter.get("/expenses", async (c) => {
     return c.json({ data: expenses });
 });
 
+apiRouter.get("/tags", async (c) => {
+    const tags = await getUserTags(c.env.DB, c.get("userId"));
+    return c.json({ tags });
+});
+
 apiRouter.put("/expenses/:id", async (c) => {
     const expenseId = parseInt(c.req.param("id"), 10);
     if (isNaN(expenseId)) {
@@ -108,12 +113,19 @@ apiRouter.put("/expenses/:id", async (c) => {
     if (tags !== undefined && !Array.isArray(tags)) {
         return c.json({ error: "tags must be an array of strings" }, 400);
     }
+    const occurred_at_utc = body.occurred_at_utc;
+    if (occurred_at_utc !== undefined && typeof occurred_at_utc !== "string") {
+        return c.json({ error: "occurred_at_utc must be a date string (YYYY-MM-DD)" }, 400);
+    }
 
     const updateData: Record<string, unknown> = {};
     if (amount_minor !== undefined) updateData.amount_minor = amount_minor;
     if (currency !== undefined) updateData.currency = currency;
     if (category !== undefined) updateData.category = category;
     if (tags !== undefined) updateData.tags = JSON.stringify(tags);
+    if (occurred_at_utc !== undefined) {
+        updateData.occurred_at_utc = new Date(`${occurred_at_utc}T12:00:00Z`).toISOString();
+    }
 
     await updateExpense(c.env.DB, expenseId, c.get("userId"), updateData);
 
