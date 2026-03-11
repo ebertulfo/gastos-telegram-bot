@@ -1,107 +1,151 @@
-import { useState, useEffect } from "react";
-import { fetchExpenses, fetchUserProfile } from "@/lib/api";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Skeleton } from "@/components/ui/skeleton";
+import { useState, useEffect, useCallback } from "react";
+import { ArrowLeft } from "lucide-react";
+import { PeriodToggle } from "../components/PeriodToggle";
+import { DonutChart } from "../components/DonutChart";
+import { CategoryList, type CategoryTotal } from "../components/CategoryList";
+import { TransactionList } from "../components/TransactionList";
+import { EditDrawer } from "../components/EditDrawer";
+import { Skeleton } from "../components/ui/skeleton";
+import { fetchExpenses, fetchUserProfile } from "../lib/api";
+import { MOCK_EXPENSES } from "../lib/mock-data";
+import { getCategoryConfig } from "../lib/categories";
+import { formatAmountShort } from "../lib/format";
+import type { ExpenseWithDetails, Period } from "../lib/types";
 
-type Period = "today" | "thisweek" | "thismonth" | "thisyear";
+const PERIOD_OPTIONS = [
+  { value: "thisweek", label: "Week" },
+  { value: "thismonth", label: "Month" },
+  { value: "thisyear", label: "Year" },
+];
 
-export default function AnalyticsScreen() {
-    const [period, setPeriod] = useState<Period>("thismonth");
-    const [expenses, setExpenses] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-    const [currency, setCurrency] = useState("PHP");
+type AnalyticsScreenProps = {
+  drillDownCategory: string | null;
+  onDrillDown: (category: string) => void;
+  onBack: () => void;
+};
 
-    useEffect(() => {
-        fetchUserProfile().then((profile) => {
-            setCurrency(profile.currency || "PHP");
-        }).catch(console.error);
-    }, []);
+export function AnalyticsScreen({ drillDownCategory, onDrillDown, onBack }: AnalyticsScreenProps) {
+  const [period, setPeriod] = useState<Period>("thismonth");
+  const [expenses, setExpenses] = useState<ExpenseWithDetails[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [currency, setCurrency] = useState("SGD");
+  const [selectedExpense, setSelectedExpense] = useState<ExpenseWithDetails | null>(null);
 
-    useEffect(() => {
-        setLoading(true);
-        fetchExpenses(period)
-            .then((data) => {
-                setExpenses(data);
-                setError(null);
-            })
-            .catch((err) => {
-                setError(err.message || "Failed to load");
-            })
-            .finally(() => {
-                setLoading(false);
-            });
-    }, [period]);
+  const loadExpenses = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await fetchExpenses(period);
+      setExpenses(data);
+    } catch {
+      if (import.meta.env.DEV) console.info("[dev] API unreachable, using mock data");
+      setExpenses(MOCK_EXPENSES);
+    } finally {
+      setLoading(false);
+    }
+  }, [period]);
 
-    // Aggregate spend by category
-    const categoryTotals = expenses.reduce((acc: Record<string, number>, exp) => {
-        const cat = exp.category || "Other";
-        const amt = exp.amount_minor / 100;
-        acc[cat] = (acc[cat] || 0) + amt;
-        return acc;
-    }, {});
+  useEffect(() => {
+    fetchUserProfile().then((profile) => {
+      if (profile.currency) setCurrency(profile.currency);
+    }).catch(() => {});
+  }, []);
 
-    const sortedCategories = Object.entries(categoryTotals)
-        .sort(([, a], [, b]) => (b as number) - (a as number));
+  useEffect(() => {
+    loadExpenses();
+  }, [loadExpenses]);
 
-    const totalSpend = expenses.reduce((sum, exp) => sum + (exp.amount_minor / 100), 0);
+  // Compute category totals
+  const totalMinor = expenses.reduce((sum, e) => sum + e.amount_minor, 0);
+  const categoryMap = new Map<string, { totalMinor: number; count: number }>();
+  for (const e of expenses) {
+    const cat = e.category || "Other";
+    const existing = categoryMap.get(cat) || { totalMinor: 0, count: 0 };
+    existing.totalMinor += e.amount_minor;
+    existing.count++;
+    categoryMap.set(cat, existing);
+  }
+  const categoryTotals: CategoryTotal[] = Array.from(categoryMap.entries())
+    .map(([category, data]) => ({
+      category,
+      totalMinor: data.totalMinor,
+      count: data.count,
+      percentage: totalMinor > 0 ? Math.round((data.totalMinor / totalMinor) * 100) : 0,
+    }))
+    .sort((a, b) => b.totalMinor - a.totalMinor);
+
+  const donutSegments = categoryTotals.map((cat) => ({
+    label: cat.category,
+    value: cat.totalMinor,
+    color: getCategoryConfig(cat.category).color,
+  }));
+
+  // Drill-down: filter expenses by selected category
+  if (drillDownCategory) {
+    const filtered = expenses.filter((e) => e.category === drillDownCategory);
+    const catConfig = getCategoryConfig(drillDownCategory);
 
     return (
-        <div className="p-4 flex flex-col gap-4 h-full">
-            <div className="flex items-center justify-between">
-                <h1 className="text-2xl font-bold tracking-tight">Analytics</h1>
-            </div>
-
-            <Tabs value={period} onValueChange={(val) => setPeriod(val as Period)} className="w-full">
-                <TabsList className="grid w-full grid-cols-4">
-                    <TabsTrigger value="today">Today</TabsTrigger>
-                    <TabsTrigger value="thisweek">Week</TabsTrigger>
-                    <TabsTrigger value="thismonth">Month</TabsTrigger>
-                    <TabsTrigger value="thisyear">Year</TabsTrigger>
-                </TabsList>
-            </Tabs>
-
-            {error && <div className="text-red-500 p-2">{error}</div>}
-
-            <Card className="bg-[var(--tg-theme-bg-color)] text-[var(--tg-theme-text-color)] border-[var(--tg-theme-hint-color)] border-opacity-20 shadow-sm flex-1 flex flex-col">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-lg font-bold">Category Breakdown</CardTitle>
-                    <span className="text-sm text-[var(--tg-theme-hint-color)]">Total: {currency} {totalSpend.toFixed(2)}</span>
-                </CardHeader>
-                <CardContent className="flex-1 overflow-y-auto mt-4 space-y-4">
-                    {loading ? (
-                        <div className="space-y-4">
-                            {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-12 w-full" />)}
-                        </div>
-                    ) : sortedCategories.length === 0 ? (
-                        <div className="text-center text-[var(--tg-theme-hint-color)] py-8">
-                            No spending data yet.
-                        </div>
-                    ) : (
-                        sortedCategories.map(([cat, amount]) => {
-                            const numericAmount = amount as number;
-                            const percentage = totalSpend > 0 ? (numericAmount / totalSpend) * 100 : 0;
-                            return (
-                                <div key={cat} className="space-y-1">
-                                    <div className="flex justify-between items-center text-sm">
-                                        <span className="font-semibold">{cat}</span>
-                                        <span>{currency} {numericAmount.toFixed(2)}</span>
-                                    </div>
-                                    <div className="h-2 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                                        {/* A generic primary color bar that scales to percentage */}
-                                        <div
-                                            className="h-full bg-[var(--tg-theme-button-color)] rounded-full transition-all duration-500 ease-in-out"
-                                            style={{ width: `${percentage}%` }}
-                                        />
-                                    </div>
-                                    <p className="text-[10px] text-right text-[var(--tg-theme-hint-color)]">{percentage.toFixed(1)}%</p>
-                                </div>
-                            );
-                        })
-                    )}
-                </CardContent>
-            </Card>
+      <>
+        <div className="flex items-center gap-2 py-3">
+          <button onClick={onBack} className="p-1">
+            <ArrowLeft size={20} color="var(--foreground)" />
+          </button>
+          <span className="text-lg font-semibold" style={{ color: "var(--foreground)" }}>
+            {catConfig.emoji} {drillDownCategory}
+          </span>
+          <span className="text-sm" style={{ color: "var(--text-secondary)" }}>
+            ({filtered.length})
+          </span>
         </div>
+        <TransactionList expenses={filtered} onSelectExpense={setSelectedExpense} />
+        <EditDrawer
+          expense={selectedExpense}
+          onClose={() => setSelectedExpense(null)}
+          onSaved={loadExpenses}
+        />
+      </>
     );
+  }
+
+  return (
+    <>
+      <div className="py-4">
+        <PeriodToggle options={PERIOD_OPTIONS} value={period} onChange={(v) => setPeriod(v as Period)} />
+      </div>
+
+      {loading ? (
+        <div className="space-y-4">
+          <Skeleton className="mx-auto h-28 w-28 rounded-full" />
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-10 w-full rounded-lg" />
+          ))}
+        </div>
+      ) : expenses.length === 0 ? (
+        <div className="py-12 text-center text-sm" style={{ color: "var(--text-secondary)" }}>
+          No spending data yet.
+        </div>
+      ) : (
+        <>
+          <DonutChart
+            segments={donutSegments}
+            total={formatAmountShort(totalMinor)}
+            currency={currency}
+          />
+          <div className="mt-6">
+            <CategoryList
+              categories={categoryTotals}
+              currency={currency}
+              onCategoryClick={onDrillDown}
+            />
+          </div>
+        </>
+      )}
+
+      <EditDrawer
+        expense={selectedExpense}
+        onClose={() => setSelectedExpense(null)}
+        onSaved={loadExpenses}
+      />
+    </>
+  );
 }

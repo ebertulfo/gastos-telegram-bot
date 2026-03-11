@@ -1,22 +1,9 @@
 import WebApp from '@twa-dev/sdk';
+import type { ExpenseWithDetails, Period } from "./types";
 
 // Determine base URL based on environment
 // In production (Cloudflare Pages), the API is hosted tightly coupled or via absolute domain.
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8787/api";
-
-type ExpenseWithDetails = {
-    id: number;
-    amount_minor: number;
-    currency: string;
-    occurred_at_utc: string;
-    status: "final" | "needs_review";
-    text_raw: string | null;
-    r2_object_key: string | null;
-    needs_review_reason: boolean;
-    parsed_description: string | null;
-    category: string;
-    tags: string;
-};
 
 // Helper to get authentication header
 function getAuthHeaders() {
@@ -38,7 +25,7 @@ export async function fetchUserProfile() {
     return res.json();
 }
 
-export async function fetchExpenses(period: "today" | "thisweek" | "thismonth" | "thisyear"): Promise<ExpenseWithDetails[]> {
+export async function fetchExpenses(period: Period): Promise<ExpenseWithDetails[]> {
     const res = await fetch(`${API_BASE_URL}/expenses?period=${period}`, {
         headers: getAuthHeaders()
     });
