@@ -7,6 +7,7 @@ import { checkRateLimit } from "../rate-limiter";
 import { sendTelegramChatMessage } from "../telegram/messages";
 import { uploadTelegramMediaToR2 } from "../telegram/media";
 import { Tracer } from "../tracer";
+import { getAckMessage } from "../ack-messages";
 import config from "../config.json";
 import type { Env, ParseQueueMessage, TelegramUpdate } from "../types";
 
@@ -98,6 +99,17 @@ export async function handleTelegramWebhook(c: Context<{ Bindings: Env }>) {
     if (!allowed) {
       await sendTelegramChatMessage(c.env, chatId, "⏳ You are sending messages too fast. Please wait a bit.");
       return c.json({ status: "rate_limited" }, 429);
+    }
+
+    // Send contextual ack message immediately to reduce perceived latency
+    const messageType: "photo" | "voice" | "text" = update.message.photo ? "photo" : update.message.voice ? "voice" : "text";
+    const ackText = getAckMessage(messageType);
+    try {
+      c.executionCtx.waitUntil(
+        sendTelegramChatMessage(c.env, chatId, ackText).catch(() => {})
+      );
+    } catch {
+      // No ExecutionContext in tests — fire-and-forget is best-effort
     }
 
     const sourceEvent = await persistSourceEvent(c.env, user.id, update);
