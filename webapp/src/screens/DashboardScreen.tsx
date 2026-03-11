@@ -3,8 +3,8 @@ import { HeroTotal } from "../components/HeroTotal";
 import { TransactionList } from "../components/TransactionList";
 import { EditDrawer } from "../components/EditDrawer";
 import { Skeleton } from "../components/ui/skeleton";
-import { fetchExpenses, fetchUserProfile } from "../lib/api";
-import { MOCK_EXPENSES } from "../lib/mock-data";
+import { fetchExpenses, fetchUserProfile, fetchUserTags } from "../lib/api";
+import { MOCK_EXPENSES, MOCK_TAGS } from "../lib/mock-data";
 import type { ExpenseWithDetails, Period } from "../lib/types";
 
 export function DashboardScreen() {
@@ -13,6 +13,7 @@ export function DashboardScreen() {
   const [loading, setLoading] = useState(true);
   const [currency, setCurrency] = useState("SGD");
   const [selectedExpense, setSelectedExpense] = useState<ExpenseWithDetails | null>(null);
+  const [allTags, setAllTags] = useState<string[]>([]);
 
   const loadExpenses = useCallback(async () => {
     setLoading(true);
@@ -34,7 +35,18 @@ export function DashboardScreen() {
   }, []);
 
   useEffect(() => {
+    fetchUserTags().then(setAllTags).catch(() => {
+      if (import.meta.env.DEV) setAllTags(MOCK_TAGS);
+    });
+  }, []);
+
+  useEffect(() => {
     loadExpenses();
+  }, [loadExpenses]);
+
+  const handleSaved = useCallback(() => {
+    loadExpenses();
+    fetchUserTags().then(setAllTags).catch(() => {});
   }, [loadExpenses]);
 
   return (
@@ -67,8 +79,9 @@ export function DashboardScreen() {
 
       <EditDrawer
         expense={selectedExpense}
+        allTags={allTags}
         onClose={() => setSelectedExpense(null)}
-        onSaved={loadExpenses}
+        onSaved={handleSaved}
       />
     </>
   );
