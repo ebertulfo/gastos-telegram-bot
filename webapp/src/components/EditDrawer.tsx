@@ -16,11 +16,7 @@ export function EditDrawer({ expense, onClose, onSaved }: EditDrawerProps) {
   const [category, setCategory] = useState("");
   const [saving, setSaving] = useState(false);
 
-  // Reset form when expense changes
   const open = expense !== null;
-  if (expense && amount === "" && category === "") {
-    // Lazy init — runs once when drawer opens
-  }
 
   const handleOpen = (isOpen: boolean) => {
     if (!isOpen) {
@@ -34,8 +30,10 @@ export function EditDrawer({ expense, onClose, onSaved }: EditDrawerProps) {
     if (!expense) return;
     setSaving(true);
     try {
-      const amountMinor = Math.round(parseFloat(amount) * 100);
-      await updateExpense(expense.id, amountMinor, expense.currency, category || undefined);
+      const effectiveAmount = amount || formatAmountShort(expense.amount_minor);
+      const amountMinor = Math.round(parseFloat(effectiveAmount) * 100);
+      const effectiveCategory = category || expense.category;
+      await updateExpense(expense.id, amountMinor, expense.currency, effectiveCategory);
       onSaved();
       onClose();
     } catch (err) {

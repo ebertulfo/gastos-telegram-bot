@@ -28,7 +28,7 @@ export function TransactionList({ expenses, onSelectExpense }: TransactionListPr
           >
             {group.label}
           </div>
-          <div className="flex flex-col divide-y" style={{ borderColor: "var(--border)" }}>
+          <div className="flex flex-col divide-y [&>*+*]:border-[var(--border)]">
             {(group.expenses as ExpenseWithDetails[]).map((expense) => (
               <TransactionRow
                 key={expense.id}
