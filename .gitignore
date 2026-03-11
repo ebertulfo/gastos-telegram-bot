@@ -5,3 +5,6 @@ coverage
 .DS_Store
 .worktrees
 .superpowers/
+
+# Local secrets — NEVER commit
+.dev.vars
