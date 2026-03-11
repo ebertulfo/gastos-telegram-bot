@@ -63,8 +63,6 @@ export function EditDrawer({ expense, onClose, onSaved }: EditDrawerProps) {
   const displayCategory = category || (expense?.category ?? "");
   const tags = expense ? parseTags(expense.tags) : [];
   const description = expense?.parsed_description || expense?.text_raw || "Unknown";
-  const cat = getCategoryConfig(displayCategory);
-
   // Determine source type
   const sourceType = expense?.r2_object_key
     ? "photo"
