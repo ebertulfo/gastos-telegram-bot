@@ -34,14 +34,32 @@ export async function fetchExpenses(period: Period): Promise<ExpenseWithDetails[
     return json.data;
 }
 
-export async function updateExpense(id: number, amount_minor: number, currency: string, category?: string) {
+export async function updateExpense(
+    id: number,
+    data: {
+        amount_minor: number;
+        currency: string;
+        category?: string;
+        tags?: string[];
+        occurred_at_utc?: string;
+    }
+) {
     const res = await fetch(`${API_BASE_URL}/expenses/${id}`, {
         method: "PUT",
         headers: getAuthHeaders(),
-        body: JSON.stringify({ amount_minor, currency, category })
+        body: JSON.stringify(data)
     });
     if (!res.ok) throw new Error(await res.text());
     return res.json();
+}
+
+export async function fetchUserTags(): Promise<string[]> {
+    const res = await fetch(`${API_BASE_URL}/tags`, {
+        headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const json = await res.json();
+    return json.tags;
 }
 
 export async function deleteExpense(id: number) {

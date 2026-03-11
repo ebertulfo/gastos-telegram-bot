@@ -150,3 +150,9 @@ export const MOCK_EXPENSES: ExpenseWithDetails[] = [
     tags: "[]",
   },
 ];
+
+export const MOCK_TAGS = [
+    "breakfast", "clothing", "coffee", "commute", "delivery",
+    "dinner", "groceries", "lunch", "medical", "monthly",
+    "movies", "rent", "social", "work",
+];
