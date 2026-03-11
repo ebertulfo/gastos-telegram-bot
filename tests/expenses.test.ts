@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { updateExpense, deleteExpense } from "../src/db/expenses";
+import { updateExpense, deleteExpense, getUserTags } from "../src/db/expenses";
 
 function mockDb() {
   const run = vi.fn(async () => ({ meta: { changes: 1 } }));
@@ -29,5 +29,35 @@ describe("deleteExpense", () => {
     await deleteExpense(db, 42, 7);
     expect(prepare).toHaveBeenCalledWith(expect.stringContaining("user_id"));
     expect(bind).toHaveBeenCalledWith(42, 7);
+  });
+});
+
+describe("getUserTags", () => {
+  it("extracts and deduplicates tags from all expenses", async () => {
+    const all = vi.fn(async () => ({
+      results: [
+        { tags: '["coffee","lunch"]' },
+        { tags: '["lunch","dinner"]' },
+        { tags: '[]' },
+      ],
+    }));
+    const bind = vi.fn(() => ({ all }));
+    const prepare = vi.fn(() => ({ bind }));
+    const db = { prepare } as unknown as D1Database;
+
+    const tags = await getUserTags(db, 7);
+    expect(prepare).toHaveBeenCalledWith(expect.stringContaining("SELECT"));
+    expect(bind).toHaveBeenCalledWith(7);
+    expect(tags).toEqual(["coffee", "dinner", "lunch"]);
+  });
+
+  it("returns empty array when no expenses", async () => {
+    const all = vi.fn(async () => ({ results: [] }));
+    const bind = vi.fn(() => ({ all }));
+    const prepare = vi.fn(() => ({ bind }));
+    const db = { prepare } as unknown as D1Database;
+
+    const tags = await getUserTags(db, 7);
+    expect(tags).toEqual([]);
   });
 });
