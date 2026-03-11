@@ -103,7 +103,7 @@ export async function handleTelegramWebhook(c: Context<{ Bindings: Env }>) {
 
     // Send contextual ack message immediately to reduce perceived latency
     const messageType: "photo" | "voice" | "text" = update.message.photo ? "photo" : update.message.voice ? "voice" : "text";
-    const ackText = getAckMessage(messageType);
+    const ackText = getAckMessage(messageType, update.message.text);
     try {
       c.executionCtx.waitUntil(
         sendTelegramChatMessage(c.env, chatId, ackText).catch(() => {})
