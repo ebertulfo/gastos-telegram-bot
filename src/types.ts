@@ -53,6 +53,7 @@ export type Env = {
   TELEGRAM_BOT_TOKEN: string;
   VECTORIZE: VectorizeIndex;
   RATE_LIMITER: KVNamespace;
+  TRACES_KV?: KVNamespace;
   OPENAI_API_KEY?: string;
   OPENAI_TRANSCRIBE_MODEL?: string;
   OPENAI_VISION_MODEL?: string;
@@ -62,6 +63,7 @@ export type Env = {
 };
 
 export type ParseQueueMessage = {
+  traceId?: string;
   userId: number;
   telegramId: number;
   timezone: string;

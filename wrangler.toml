@@ -1,6 +1,7 @@
 name = "gastos-telegram-bot"
 main = "src/index.ts"
 compatibility_date = "2025-02-14"
+compatibility_flags = ["nodejs_compat"]
 workers_dev = true
 
 [[d1_databases]]
@@ -12,6 +13,10 @@ migrations_dir = "migrations"
 [[kv_namespaces]]
 binding = "RATE_LIMITER"
 id = "94df970c41314b6a8dc414a659cdaf13"
+
+[[kv_namespaces]]
+binding = "TRACES_KV"
+id = "917ab96fbfe14175aac9c29ae9c019a2"
 
 [[queues.producers]]
 binding = "INGEST_QUEUE"
