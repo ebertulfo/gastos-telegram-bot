@@ -78,12 +78,13 @@ export function createAgentTools(env: Env, userId: number, telegramId: number, t
 
     const editExpense = tool({
         name: "edit_expense",
-        description: "Edit a recent expense for the authenticated user. Use this when the user wants to correct an amount, category, or description.",
+        description: "Edit a recent expense for the authenticated user. Use this when the user wants to correct an amount, category, description, or date.",
         parameters: z.object({
             expense_id: z.number().describe("The ID of the expense to edit"),
             amount: z.number().nullable().describe("New amount in major currency units, or null to keep unchanged"),
             category: z.enum(CATEGORIES).nullable().describe("New category, or null to keep unchanged"),
             description: z.string().max(50).nullable().describe("New description, or null to keep unchanged"),
+            occurred_at: z.string().nullable().default(null).describe("New ISO date (YYYY-MM-DD) for when the expense occurred, or null to keep unchanged. Use this to fix the date of a mis-dated expense."),
         }),
         execute: async (input) => {
             const updates: Record<string, unknown> = {};
@@ -92,6 +93,9 @@ export function createAgentTools(env: Env, userId: number, telegramId: number, t
             }
             if (input.category !== null) {
                 updates.category = input.category;
+            }
+            if (input.occurred_at !== null && input.occurred_at !== undefined) {
+                updates.occurred_at_utc = new Date(`${input.occurred_at}T12:00:00Z`).toISOString();
             }
             // Note: description is not stored on the expenses table directly.
             // It lives in parse_results.parsed_json. We skip it here.

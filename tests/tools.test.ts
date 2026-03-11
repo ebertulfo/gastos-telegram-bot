@@ -131,6 +131,40 @@ describe("createAgentTools", () => {
     expect(updates).toHaveProperty("amount_minor", 1720);
   });
 
+  it("edit_expense updates occurred_at_utc when occurred_at is provided", async () => {
+    const { updateExpense } = await import("../src/db/expenses");
+    const tools = createAgentTools(createMockEnv(), userId, 12345, timezone, currency);
+    const editTool = tools[1] as any;
+    await editTool.execute({
+      expense_id: 1,
+      amount: null,
+      category: null,
+      description: null,
+      occurred_at: "2026-03-10",
+    });
+    const calls = vi.mocked(updateExpense).mock.calls;
+    const updates = calls[calls.length - 1][3];
+    expect(updates).toHaveProperty("occurred_at_utc");
+    expect(updates.occurred_at_utc).toContain("2026-03-10");
+  });
+
+  it("edit_expense does not update occurred_at_utc when occurred_at is null", async () => {
+    const { updateExpense } = await import("../src/db/expenses");
+    const tools = createAgentTools(createMockEnv(), userId, 12345, timezone, currency);
+    const editTool = tools[1] as any;
+    await editTool.execute({
+      expense_id: 1,
+      amount: 20,
+      category: null,
+      description: null,
+      occurred_at: null,
+    });
+    const calls = vi.mocked(updateExpense).mock.calls;
+    const updates = calls[calls.length - 1][3];
+    expect(updates).not.toHaveProperty("occurred_at_utc");
+    expect(updates).toHaveProperty("amount_minor", 2000);
+  });
+
   it("log_expense returns the new expense ID", async () => {
     const { insertExpense } = await import("../src/db/expenses");
     // Mock insertExpense to return an ID
