@@ -1,6 +1,6 @@
 import { createApp } from "./app";
 import { handleParseQueueBatch } from "./queue";
-import { dispatchNotifications } from "./notifications";
+import { dispatchNotifications, cleanupOldTraces } from "./notifications";
 import type { Env, ParseQueueMessage } from "./types";
 
 const app = createApp();
@@ -14,5 +14,6 @@ export default {
   },
   scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext) {
     ctx.waitUntil(dispatchNotifications(env, new Date()));
+    ctx.waitUntil(cleanupOldTraces(env.DB));
   }
 } satisfies ExportedHandler<Env, ParseQueueMessage>;

@@ -295,3 +295,15 @@ async function sendNotification(
 
   await sendTelegramChatMessage(env, user.telegram_chat_id, lines.join("\n"));
 }
+
+// ---------------------------------------------------------------------------
+// Trace cleanup — deletes spans older than 30 days, batched to 500 rows
+// ---------------------------------------------------------------------------
+
+export async function cleanupOldTraces(db: D1Database): Promise<void> {
+  await db
+    .prepare(
+      "DELETE FROM traces WHERE id IN (SELECT id FROM traces WHERE created_at_utc < datetime('now', '-30 days') LIMIT 500)"
+    )
+    .run();
+}
