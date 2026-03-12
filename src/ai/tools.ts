@@ -111,7 +111,7 @@ export function createAgentTools(env: Env, userId: number, telegramId: number, t
             if (input.category !== null) {
                 updates.category = input.category;
             }
-            if (input.occurred_at !== null && input.occurred_at !== undefined) {
+            if (input.occurred_at !== null) {
                 const validatedDate = validateOccurredAt(input.occurred_at, "edit_expense");
                 if (validatedDate) {
                     updates.occurred_at_utc = validatedDate;

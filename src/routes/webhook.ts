@@ -101,6 +101,17 @@ export async function handleTelegramWebhook(c: Context<{ Bindings: Env }>) {
       return c.json({ status: "rate_limited" }, 429);
     }
 
+    // Send contextual ack message immediately to reduce perceived latency
+    const messageType: "photo" | "voice" | "text" = update.message.photo ? "photo" : update.message.voice ? "voice" : "text";
+    const ackText = getAckMessage(messageType, update.message.text);
+    try {
+      c.executionCtx.waitUntil(
+        sendTelegramChatMessage(c.env, chatId, ackText).catch(() => {})
+      );
+    } catch {
+      // No ExecutionContext in tests — fire-and-forget is best-effort
+    }
+
     // Content-based dedup: skip if same user sent identical text in last 30 seconds
     // (catches rapid re-taps when bot appears slow)
     if (update.message.text) {
@@ -117,17 +128,6 @@ export async function handleTelegramWebhook(c: Context<{ Bindings: Env }>) {
         });
         return c.json({ status: "duplicate" }, 200);
       }
-    }
-
-    // Send contextual ack message immediately to reduce perceived latency
-    const messageType: "photo" | "voice" | "text" = update.message.photo ? "photo" : update.message.voice ? "voice" : "text";
-    const ackText = getAckMessage(messageType, update.message.text);
-    try {
-      c.executionCtx.waitUntil(
-        sendTelegramChatMessage(c.env, chatId, ackText).catch(() => {})
-      );
-    } catch {
-      // No ExecutionContext in tests — fire-and-forget is best-effort
     }
 
     const sourceEvent = await persistSourceEvent(c.env, user.id, update);
