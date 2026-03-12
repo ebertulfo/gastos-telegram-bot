@@ -6,6 +6,7 @@ Development journal capturing iterations, decisions, and learnings. Raw material
 
 | Date | Session | Highlights |
 |------|---------|------------|
+| 2026-03-12 | [Bot Conversation Improvements](2026-03-12-bot-conversation-improvements.md) | Production chat analysis → date validation, content dedup, prompt hardening (PR #4) |
 | 2026-03-12 | [DX Improvements](2026-03-12-dx-improvements.md) | Gitleaks hook, agent triggers, audit-context skill, devlog system, backlog |
 | 2026-03-11 | [Tag & Date Editing](2026-03-11-tag-date-editing.md) | Full-stack tag editing, date presets, autosuggest (PR #3) |
 | 2026-03-11 | [Mini App Redesign](2026-03-11-mini-app-redesign.md) | Custom monochrome design system, DonutChart, 2-tab nav (PR #2) |
