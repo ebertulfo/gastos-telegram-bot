@@ -18,6 +18,25 @@ const CATEGORIES = ["Food", "Transport", "Housing", "Shopping", "Entertainment",
 const PERIODS = ["today", "yesterday", "thisweek", "lastweek", "thismonth", "lastmonth", "thisyear", "lastyear"] as const;
 
 /**
+ * Validates occurred_at dates from LLM tool calls.
+ * Rejects dates >30 days in the past or any future date (likely hallucinated).
+ * Returns null if occurred_at should be ignored (caller defaults to now).
+ */
+function validateOccurredAt(occurredAt: string | null, toolName: string): string | null {
+    if (!occurredAt) return null;
+    const parsedDate = new Date(`${occurredAt}T12:00:00Z`);
+    const now = new Date();
+    const diffMs = now.getTime() - parsedDate.getTime();
+    const diffDays = diffMs / (1000 * 60 * 60 * 24);
+    if (diffDays > 30 || diffDays < 0) {
+        const label = diffDays > 0 ? `${diffDays.toFixed(0)} days in the past` : `${Math.abs(diffDays).toFixed(0)} days in the future`;
+        console.warn(`[TOOL:${toolName}] Rejected suspicious occurred_at="${occurredAt}" (${label}). Defaulting to now.`);
+        return null;
+    }
+    return parsedDate.toISOString();
+}
+
+/**
  * Factory that creates all agent tools with userId/env captured in closure.
  * The LLM cannot override these values — they come from the authenticated context.
  */
@@ -35,9 +54,7 @@ export function createAgentTools(env: Env, userId: number, telegramId: number, t
         }),
         execute: async (input) => {
             const amountMinor = Math.round(input.amount * 100);
-            const occurredAtUtc = input.occurred_at
-                ? new Date(`${input.occurred_at}T12:00:00Z`).toISOString()
-                : new Date().toISOString();
+            const occurredAtUtc = validateOccurredAt(input.occurred_at, "log_expense") ?? new Date().toISOString();
 
             // Create a real source event to avoid source_event_id=0 collision
             const sourceEventId = await createAgentSourceEvent(
@@ -94,8 +111,11 @@ export function createAgentTools(env: Env, userId: number, telegramId: number, t
             if (input.category !== null) {
                 updates.category = input.category;
             }
-            if (input.occurred_at !== null && input.occurred_at !== undefined) {
-                updates.occurred_at_utc = new Date(`${input.occurred_at}T12:00:00Z`).toISOString();
+            if (input.occurred_at !== null) {
+                const validatedDate = validateOccurredAt(input.occurred_at, "edit_expense");
+                if (validatedDate) {
+                    updates.occurred_at_utc = validatedDate;
+                }
             }
             // Note: description is not stored on the expenses table directly.
             // It lives in parse_results.parsed_json. We skip it here.

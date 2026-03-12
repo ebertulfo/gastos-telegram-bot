@@ -1,7 +1,7 @@
 # Gastos Telegram Bot
 
 ## Commands
-- `npm run test` — run full test suite (vitest, 7 files, 21 tests)
+- `npm run test` — run full test suite (vitest, 13 files, 96 tests)
 - `npm run check` — TypeScript type check only (tsc --noEmit)
 - `npm run check && npm run test` — standard verification after any change
 - `npm run dev` — local dev server (wrangler dev)
@@ -10,16 +10,16 @@
 ## Architecture
 - Cloudflare Workers (Hono) + D1 + R2 + KV + Queues + Vectorize
 - Webhook returns 200 immediately; all heavy AI work goes to INGEST_QUEUE
-- Two queue message types: `"receipt"` (expense ingestion) and `"chat"` (semantic AI)
+- Single `ParseQueueMessage` type — all messages go through the same Agents SDK `run()` pipeline
 - `APP_ENV` is `"prod"` in wrangler.toml; use `"development"` locally via `.dev.vars`
-- `queue.ts` is a router only — receipt logic lives in `handleReceiptMessage()`, chat routes to `runSemanticChat()`
+- `queue.ts` is a router only — receipt logic lives in `handleReceiptMessage()`
 
 ## Code Patterns
 - Hono middleware must be `async (c, next) => { await next(); }` — sync middleware returning `c.json()` causes a TS overload error
 - `Env` type lives in `src/types.ts` — add new Cloudflare bindings/env vars there first
 - All DB queries inject `user_id` from auth context — LLM tools must never accept userId from user input
 - `response_format: { type: "json_object" }` used on all OpenAI extraction calls
-- `db/` functions take `D1Database` directly (not `Env`) — current files: expenses, users, chat-history, quotas, source-events, parse-results
+- `db/` functions take `D1Database` directly (not `Env`) — current files: expenses, users, chat-history, quotas, source-events, parse-results, notifications
 - Use `Extract<UnionType, { discriminator: "value" }>` to narrow ParseQueueMessage union for typed function args
 - Use `z.infer<typeof Schema>` to type helper return values — avoids duplicating Zod schema shapes as manual types
 
@@ -27,6 +27,7 @@
 - Tests use `@cloudflare/vitest-pool-workers` — runs in a Miniflare Workers environment
 - OpenAI, Vectorize, agent, and rate-limiter are mocked in tests — not integration tested
 - Pure deletion/cleanup tasks don't need new tests; existing suite is sufficient as regression guard
+- Webhook test `createMockDb` has order-sensitive `prepare()` branches — more specific query matchers (e.g. content dedup) must come before generic ones (e.g. `SELECT id FROM source_events`)
 
 ## Workflow
 

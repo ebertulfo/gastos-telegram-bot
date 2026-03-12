@@ -1,6 +1,6 @@
 import type { Context } from "hono";
 import { z } from "zod";
-import { persistSourceEvent, setSourceEventR2ObjectKey } from "../db/source-events";
+import { persistSourceEvent, setSourceEventR2ObjectKey, findRecentDuplicateContent } from "../db/source-events";
 import { upsertUserForIngestion } from "../db/users";
 import { handleOnboardingOrCommand } from "../onboarding";
 import { checkRateLimit } from "../rate-limiter";
@@ -110,6 +110,24 @@ export async function handleTelegramWebhook(c: Context<{ Bindings: Env }>) {
       );
     } catch {
       // No ExecutionContext in tests — fire-and-forget is best-effort
+    }
+
+    // Content-based dedup: skip if same user sent identical text in last 30 seconds
+    // (catches rapid re-taps when bot appears slow)
+    if (update.message.text) {
+      const recentDuplicateId = await findRecentDuplicateContent(
+        c.env.DB,
+        user.id,
+        update.message.text,
+      );
+      if (recentDuplicateId !== null) {
+        console.warn("Content-duplicate message skipped", {
+          chatId,
+          text: update.message.text.slice(0, 50),
+          originalSourceEventId: recentDuplicateId,
+        });
+        return c.json({ status: "duplicate" }, 200);
+      }
     }
 
     const sourceEvent = await persistSourceEvent(c.env, user.id, update);

@@ -53,6 +53,22 @@ describe("buildSystemPrompt", () => {
         expect(prompt).toContain("NEVER guess");
     });
 
+    it("includes date handling rules in prompt", () => {
+        const prompt = buildSystemPrompt("UTC", "USD");
+        expect(prompt).toContain("occurred_at");
+        expect(prompt).toContain("null");
+    });
+
+    it("includes no-clarification rule for clear time expressions", () => {
+        const prompt = buildSystemPrompt("UTC", "USD");
+        expect(prompt).toContain("Do NOT ask for clarification");
+    });
+
+    it("includes standalone query scope rule", () => {
+        const prompt = buildSystemPrompt("UTC", "USD");
+        expect(prompt).toContain("all categories");
+    });
+
     it("includes today's date", () => {
         const prompt = buildSystemPrompt("UTC", "USD");
         // Should contain a formatted date string (year at minimum)
