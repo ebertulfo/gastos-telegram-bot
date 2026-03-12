@@ -116,10 +116,10 @@ export function EditDrawer({ expense, allTags, onClose, onSaved }: EditDrawerPro
       <Drawer.Portal>
         <Drawer.Overlay className="fixed inset-0 bg-black/40" />
         <Drawer.Content
-          className="fixed bottom-0 left-0 right-0 flex flex-col rounded-t-xl"
-          style={{ background: "var(--background)", maxHeight: "85vh" }}
+          className="fixed bottom-0 left-0 right-0 flex flex-col rounded-t-xl max-w-full"
+          style={{ background: "var(--background)", maxHeight: "85vh", width: "100vw" }}
         >
-          <div className="overflow-y-auto px-4 pb-6 pt-3">
+          <div className="overflow-y-auto overflow-x-hidden px-4 pb-6 pt-3">
             {/* Drag handle */}
             <div className="mx-auto mb-4 h-1 w-9 rounded-full" style={{ background: "var(--border)" }} />
 
@@ -141,7 +141,7 @@ export function EditDrawer({ expense, allTags, onClose, onSaved }: EditDrawerPro
                 </div>
 
                 {/* Editable fields */}
-                <div className="flex flex-col gap-3.5">
+                <div className="flex flex-col gap-3.5 min-w-0">
                   {/* Category */}
                   <div>
                     <label className="mb-1 block text-[11px] uppercase tracking-wider" style={{ color: "var(--text-secondary)" }}>
@@ -192,11 +192,12 @@ export function EditDrawer({ expense, allTags, onClose, onSaved }: EditDrawerPro
                           setDate(e.target.value);
                           setShowDatePicker(false);
                         }}
-                        className="mt-1.5 w-full rounded-lg border px-3 py-2.5 text-sm"
+                        className="mt-1.5 w-full rounded-lg border px-3 py-2.5 text-sm box-border"
                         style={{
                           background: "var(--surface-hover)",
                           borderColor: "var(--border)",
                           color: "var(--foreground)",
+                          maxWidth: "100%",
                         }}
                       />
                     )}

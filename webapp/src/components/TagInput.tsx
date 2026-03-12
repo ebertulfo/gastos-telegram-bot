@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 
 type TagInputProps = {
   tags: string[];
@@ -10,14 +10,10 @@ const TAG_REGEX = /^[a-zA-Z0-9\- ]+$/;
 const MAX_TAG_LENGTH = 30;
 
 export function TagInput({ tags, allTags, onChange }: TagInputProps) {
-  const [adding, setAdding] = useState(false);
   const [input, setInput] = useState("");
   const [focusedIdx, setFocusedIdx] = useState(-1);
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (adding && inputRef.current) inputRef.current.focus();
-  }, [adding]);
 
   const suggestions = input.trim()
     ? allTags
@@ -53,98 +49,93 @@ export function TagInput({ tags, allTags, onChange }: TagInputProps) {
       e.preventDefault();
       setFocusedIdx((i) => Math.max(i - 1, -1));
     } else if (e.key === "Escape") {
-      setAdding(false);
       setInput("");
       setFocusedIdx(-1);
+      setShowSuggestions(false);
+      inputRef.current?.blur();
     }
   };
 
   const handleBlur = () => {
-    // Delay to allow click on suggestion
     setTimeout(() => {
-      if (!input.trim()) {
-        setAdding(false);
-        setFocusedIdx(-1);
-      }
+      setShowSuggestions(false);
+      setFocusedIdx(-1);
     }, 150);
   };
 
   return (
     <div>
-      <div className="flex flex-wrap gap-1.5">
-        {tags.map((tag) => (
-          <span
-            key={tag}
-            className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs"
-            style={{ background: "var(--surface)", color: "var(--text-secondary)" }}
-          >
-            #{tag}
-            <button
-              onClick={() => removeTag(tag)}
-              className="ml-0.5 text-[10px] opacity-60 hover:opacity-100"
-              style={{ color: "var(--text-secondary)" }}
+      {tags.length > 0 && (
+        <div className="mb-2 flex flex-wrap gap-1.5">
+          {tags.map((tag) => (
+            <span
+              key={tag}
+              className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs"
+              style={{ background: "var(--surface)", color: "var(--text-secondary)" }}
             >
-              ✕
-            </button>
-          </span>
-        ))}
-        {!adding && (
-          <button
-            onClick={() => setAdding(true)}
-            className="rounded-full border border-dashed px-2.5 py-1 text-xs"
-            style={{ borderColor: "var(--text-secondary)", color: "var(--text-secondary)" }}
-          >
-            + Add
-          </button>
-        )}
-      </div>
-
-      {adding && (
-        <div className="relative mt-2">
-          <input
-            ref={inputRef}
-            type="text"
-            value={input}
-            onChange={(e) => {
-              setInput(e.target.value);
-              setFocusedIdx(-1);
-            }}
-            onKeyDown={handleKeyDown}
-            onBlur={handleBlur}
-            placeholder="Type a tag..."
-            maxLength={MAX_TAG_LENGTH}
-            className="w-full rounded-lg border px-3 py-2 text-sm"
-            style={{
-              background: "var(--surface-hover)",
-              borderColor: "var(--border)",
-              color: "var(--foreground)",
-            }}
-          />
-          {suggestions.length > 0 && (
-            <div
-              className="absolute left-0 right-0 top-full z-10 mt-1 rounded-lg border shadow-lg"
-              style={{ background: "var(--background)", borderColor: "var(--border)" }}
-            >
-              {suggestions.map((s, i) => (
-                <button
-                  key={s}
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    addTag(s);
-                  }}
-                  className="block w-full px-3 py-2 text-left text-sm"
-                  style={{
-                    color: "var(--foreground)",
-                    background: i === focusedIdx ? "var(--surface)" : "transparent",
-                  }}
-                >
-                  #{s}
-                </button>
-              ))}
-            </div>
-          )}
+              #{tag}
+              <button
+                onClick={() => removeTag(tag)}
+                className="ml-0.5 text-[10px] opacity-60 hover:opacity-100"
+                style={{ color: "var(--text-secondary)" }}
+              >
+                ✕
+              </button>
+            </span>
+          ))}
         </div>
       )}
+
+      <div className="relative">
+        <input
+          ref={inputRef}
+          type="text"
+          value={input}
+          onChange={(e) => {
+            setInput(e.target.value);
+            setFocusedIdx(-1);
+            setShowSuggestions(true);
+          }}
+          onFocus={() => setShowSuggestions(true)}
+          onKeyDown={handleKeyDown}
+          onBlur={handleBlur}
+          placeholder="Add a tag..."
+          maxLength={MAX_TAG_LENGTH}
+          className="w-full rounded-lg border px-3 py-2 text-sm box-border"
+          style={{
+            background: "var(--surface-hover)",
+            borderColor: "var(--border)",
+            color: "var(--foreground)",
+          }}
+        />
+        {showSuggestions && suggestions.length > 0 && (
+          <div
+            className="absolute left-0 right-0 z-10 rounded-lg border shadow-lg"
+            style={{
+              background: "var(--background)",
+              borderColor: "var(--border)",
+              bottom: "calc(100% + 4px)",
+            }}
+          >
+            {suggestions.map((s, i) => (
+              <button
+                key={s}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  addTag(s);
+                }}
+                className="block w-full px-3 py-2 text-left text-sm"
+                style={{
+                  color: "var(--foreground)",
+                  background: i === focusedIdx ? "var(--surface)" : "transparent",
+                }}
+              >
+                #{s}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

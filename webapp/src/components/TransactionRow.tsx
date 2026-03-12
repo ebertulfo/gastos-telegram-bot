@@ -19,11 +19,9 @@ export function TransactionRow({ expense, onClick }: TransactionRowProps) {
       className="flex w-full items-center justify-between py-2.5 text-left"
       style={{
         background: isReview ? "var(--review-bg)" : "transparent",
-        marginLeft: isReview ? "-8px" : 0,
-        marginRight: isReview ? "-8px" : 0,
+        borderRadius: isReview ? "6px" : 0,
         paddingLeft: isReview ? "8px" : 0,
         paddingRight: isReview ? "8px" : 0,
-        borderRadius: isReview ? "6px" : 0,
       }}
     >
       <div className="flex items-center gap-2.5 min-w-0">
