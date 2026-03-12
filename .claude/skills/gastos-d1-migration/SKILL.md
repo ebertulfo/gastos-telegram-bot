@@ -6,7 +6,11 @@ tools: Read, Glob, Grep, Bash, Write, Edit
 
 # D1 Migration Checklist
 
-Follow this checklist when creating a new D1 migration.
+## Step 0: Dispatch cloudflare-specialist
+
+Before writing any migration SQL, dispatch the `cloudflare-specialist` agent to research D1-specific SQL limitations, supported types, and any gotchas for the schema change you're about to make.
+
+## Follow this checklist when creating a new D1 migration.
 
 ## Step 1: Determine the next migration number
 

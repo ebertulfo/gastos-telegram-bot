@@ -54,6 +54,7 @@
 | Verify | `npm run check && npm run test` | `npm run check && npm run test` | `superpowers:verification-before-completion` | `superpowers:verification-before-completion` |
 | Review | - | `superpowers:requesting-code-review` | `superpowers:requesting-code-review` | `superpowers:requesting-code-review` |
 | Simplify | - | - | `simplify` | `simplify` |
+| Audit context | - | - | `gastos:audit-context` | `gastos:audit-context` |
 | Revise CLAUDE.md | - | - | `claude-md-management:revise-claude-md` | `claude-md-management:revise-claude-md` |
 | Commit/PR | `commit-commands:commit` | `commit-commands:commit` | `commit-commands:commit-push-pr` | `commit-commands:commit-push-pr` |
 | Deploy | - | - | Prompt user | Prompt user |
@@ -65,13 +66,23 @@
 - Never skip steps for the assessed size
 
 ### Specialist Subagents
-- Use `cloudflare-specialist` for Workers/D1/R2/KV/Queues/Vectorize questions
-- Use `telegram-specialist` for Bot API/webhook/Mini App questions
-- Use `openai-specialist` for API/Agents SDK/prompt engineering questions
-- Delegate proactively — don't wait to be asked
+Dispatch these BEFORE writing code that touches their domain. They research and advise so you make informed decisions.
+
+| Agent | Trigger files | Trigger keywords |
+|-------|--------------|-----------------|
+| `cloudflare-specialist` | `wrangler.toml`, `src/db/*`, `migrations/*`, `src/queue.ts`, `src/index.ts`, `src/app.ts` | D1, R2, KV, queue, vectorize, binding, migration, deploy, cron |
+| `telegram-specialist` | `src/telegram/*`, `src/routes/webhook.ts`, `src/onboarding.ts`, `webapp/*` | telegram, bot command, webhook, inline keyboard, mini app, sendMessage |
+| `openai-specialist` | `src/ai/*`, `src/queue.ts`, `src/notifications.ts` | openai, agent, prompt, embedding, tool calling, transcription, model, token |
+
+**Rules:**
+- If a task touches files in the trigger column, dispatch the matching agent for research BEFORE implementing
+- If multiple agents apply (e.g., queue.ts touches both Cloudflare and OpenAI), dispatch them in parallel
+- Agents are advisory — they research and return findings, they don't write code
+- Don't skip agents to save time — the research prevents mistakes that cost more time to fix
 
 ### Custom Skills
 - `gastos:assess-task-size` — classify task and announce pipeline (every task)
 - `gastos:d1-migration` — D1 migration checklist
 - `gastos:new-db-module` — scaffold src/db/ module
+- `gastos:audit-context` — audit all context files for stale info (end of medium/large tasks)
 - `gastos:rollback` — emergency deployment rollback

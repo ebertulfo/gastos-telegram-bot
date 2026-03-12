@@ -52,6 +52,13 @@ npx wrangler d1 execute gastos-db --command="SELECT trace_id, SUM(duration_ms) a
 npx wrangler d1 execute gastos-db --command="SELECT trace_id, span_name, duration_ms, status, error_message, created_at_utc FROM traces WHERE user_id = <USER_ID> ORDER BY created_at_utc DESC LIMIT 20;"
 ```
 
+## Specialist Dispatch
+
+Based on error patterns, dispatch the relevant specialist agent for deeper research:
+- Errors in `ai.*` spans → dispatch `openai-specialist`
+- Errors in `queue.*` or `webhook.media_upload` spans → dispatch `cloudflare-specialist`
+- Errors in `telegram.*` spans → dispatch `telegram-specialist`
+
 ## Debugging Workflow
 
 1. **Start with KV** -- `kv key list` to see recent errors

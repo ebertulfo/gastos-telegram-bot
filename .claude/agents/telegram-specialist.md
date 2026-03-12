@@ -1,7 +1,12 @@
 ---
+model: sonnet
 name: telegram-specialist
 description: |
-  Telegram Bot API, webhooks, and Mini Apps specialist. Use when working with Telegram message handling, bot commands, inline keyboards, media processing, webhook configuration, or the Telegram Mini App (webapp/).
+  Telegram Bot API, webhooks, and Mini Apps specialist. Use proactively when the task involves Telegram integration or the Mini App.
+
+  TRIGGER when: touching src/telegram/*, src/routes/webhook.ts, src/onboarding.ts, webapp/*, or any file that sends/receives Telegram messages. Also trigger on keywords: telegram, bot command, webhook, inline keyboard, callback query, mini app, initData, sendMessage, chat_id, MarkdownV2.
+
+  DO NOT TRIGGER when: pure backend logic with no Telegram involvement, pure OpenAI/Cloudflare work.
 
   <example>
   Context: User needs to add a new bot command.
@@ -16,12 +21,12 @@ description: |
   assistant: "I'll delegate to the telegram-specialist to debug the Telegram Mini App auth flow."
   <commentary>Mini App auth uses Telegram-specific HMAC validation.</commentary>
   </example>
-model: inherit
 memory: project
 tools:
   - Read
   - Grep
   - Glob
+  - LS
   - WebFetch
 mcpServers:
   - context7

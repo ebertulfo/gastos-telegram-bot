@@ -1,7 +1,12 @@
 ---
+model: sonnet
 name: cloudflare-specialist
 description: |
-  Cloudflare Workers, D1, R2, KV, Queues, and Vectorize specialist. Use when working with Cloudflare infrastructure, wrangler configuration, bindings, worker APIs, or Hono framework on Workers. Use proactively when the task involves any Cloudflare service.
+  Cloudflare Workers, D1, R2, KV, Queues, and Vectorize specialist. Use proactively when the task involves any Cloudflare service.
+
+  TRIGGER when: touching wrangler.toml, src/db/*, migrations/*, src/queue.ts, src/index.ts, src/app.ts, or any file importing D1Database/R2Bucket/KVNamespace/Queue/VectorizeIndex. Also trigger on keywords: D1, R2, KV, queue, vectorize, worker, binding, migration, wrangler, deploy, cron, durable object.
+
+  DO NOT TRIGGER when: pure frontend work in webapp/, pure OpenAI/Telegram logic with no CF binding involvement.
 
   <example>
   Context: User needs to add a new D1 query with specific SQL patterns.
@@ -16,12 +21,12 @@ description: |
   assistant: "I'll delegate to the cloudflare-specialist to investigate queue consumer limits and configuration."
   <commentary>Queue behavior is CF-specific domain knowledge.</commentary>
   </example>
-model: inherit
 memory: project
 tools:
   - Read
   - Grep
   - Glob
+  - LS
   - WebFetch
 mcpServers:
   - context7
