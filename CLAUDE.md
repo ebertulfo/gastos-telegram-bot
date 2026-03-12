@@ -85,4 +85,5 @@ Dispatch these BEFORE writing code that touches their domain. They research and 
 - `gastos:d1-migration` — D1 migration checklist
 - `gastos:new-db-module` — scaffold src/db/ module
 - `gastos:audit-context` — audit all context files for stale info (end of medium/large tasks)
+- `gastos:log-session` — log development session to devlog (end of every session)
 - `gastos:rollback` — emergency deployment rollback
