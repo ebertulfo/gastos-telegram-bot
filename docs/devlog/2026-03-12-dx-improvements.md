@@ -1,7 +1,8 @@
 # Fixing the Tools That Fix the Code
 
 **Date:** 2026-03-12
-**Commits:** 4 commits
+**Duration:** ~2h
+**Commits:** 5 commits
 
 ## What Changed
 - Fixed EditDrawer overflow issues and simplified TagInput UX (fewer states, cleaner interaction)
@@ -11,6 +12,9 @@
 - Created `gastos:audit-context` skill for detecting stale information across CLAUDE.md, MEMORY.md, and skill files
 - Added historical plan documents for earlier sessions (bug fixes, Agents SDK migration) that were missing from the repo
 - Set up gitleaks pre-commit hook after a `.dev.vars` secret leak scare the previous day
+- Created persistent development backlog (`memory/backlog.md`) consolidating scattered tech debt, test gaps, and feature ideas
+- Built `gastos:log-session` skill and backfilled 11 devlog entries covering the full project history (Feb 12 → today)
+- Updated MEMORY.md with post-migration architecture info (was still referencing gpt-4o-mini and intent classifier)
 
 ## Why
 This was a cleanup session — the kind that doesn't produce features but keeps the project from slowly rotting. Three things forced it:
@@ -28,6 +32,8 @@ This was a cleanup session — the kind that doesn't produce features but keeps 
 | Agent trigger rules | Vague descriptions ("use for Cloudflare questions"), keyword matching, file-path triggers | File-path triggers + keyword triggers combined | File paths are unambiguous — if someone edits `wrangler.toml`, the Cloudflare specialist should activate. Keywords catch conversational triggers ("how does D1 handle..."). Both together minimize false positives and false negatives. |
 | Context staleness detection | Manual periodic review, pre-commit lint, dedicated audit skill | Dedicated skill (`gastos:audit-context`) | Staleness detection requires semantic understanding — "is this architecture description still accurate given the current code?" That's not something a regex linter can do. A skill invoked on-demand is the right abstraction. |
 | Historical plan docs | Leave undocumented, retroactive plan docs, just reference in commit messages | Committed retroactive plan docs | The plan documents for bug fixes and the Agents SDK migration existed as working notes but were never committed. Having them in `docs/plans/` maintains a complete decision trail. Future-me (or a collaborator) can understand *why* those changes were made. |
+| Development backlog | GitHub Issues, TODO.md in repo, memory file | Memory file (`memory/backlog.md`) | Claude sees it every session automatically. GitHub Issues adds friction for a solo project. Memory file is persistent across sessions and part of the AI's context. |
+| Devlog system | Per-feature entries, per-session entries, weekly summaries | Per-session entries with skill | Sessions are the natural unit of work. A skill ensures entries get written. Backfilling from git history captured 11 entries of portfolio content that would otherwise be lost. |
 
 ## How (Workflow)
 This was an opportunistic session — no single feature, just addressing accumulated friction. Started with the failing tests because they were blocking the verify step in the workflow pipeline. The test fixes were mechanical: update the mocked model name, add the missing provider mocks.
@@ -37,12 +43,15 @@ Then moved to the UI polish from the previous session's tag-date editing work. T
 The agent and skill improvements came from observing the workflow over the past few sessions. The specialists were either too eager or too quiet, and there was no systematic way to check if context files had drifted. Built the trigger rules by listing the actual files and keywords each specialist should care about, then tested with sample prompts.
 
 ## Metrics
-- 16 files changed, ~2,644 lines added, ~113 lines removed
-- 4 test failures fixed (0 new tests — these were existing tests that broke)
+- 26 files changed, +3,320 / -24 lines
+- Tests: 87 passing (13 files), 4 failures fixed
 - 3 specialist agents updated with trigger rules
-- 1 new skill created (`gastos:audit-context`)
-- 4 historical plan documents committed (~2,400 lines of design and implementation records)
+- 2 new skills created (`gastos:audit-context`, `gastos:log-session`)
+- 11 devlog entries backfilled + README index
+- 4 historical plan documents committed (~2,400 lines)
 - 1 pre-commit hook added (gitleaks)
+- 1 persistent backlog created
+- Deployment: no (DX only, no prod changes)
 
 ## Learnings
 - **Test mocks are a maintenance surface.** When you mock an external SDK, every breaking change in that SDK becomes a test fix. The Agents SDK migration changed model names and added new provider abstractions — the production code was updated but the mocks weren't. This is the hidden cost of mocking: you're maintaining a parallel reality that can drift from the actual one.
@@ -56,3 +65,5 @@ The agent and skill improvements came from observing the workflow over the past 
 - "Building Self-Improving AI Development Workflows" — trigger rules, context auditing, and the feedback loop of AI-assisted tooling
 - "Why Cleanup Sessions Are the Most Important Sessions" — the case for dedicating time to developer experience and project hygiene
 - "Preventing Secret Leaks in Side Projects: A gitleaks Setup Guide" — practical pre-commit hook setup for solo developers
+- "Building a Development Journal System with AI" — how to capture engineering decisions for portfolio content using Claude Code skills and parallel agents
+- "From Side Project to Portfolio Piece: Documenting Your Engineering Decisions" — turning a Telegram bot into a career asset
