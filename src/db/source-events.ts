@@ -168,6 +168,27 @@ export async function getSourceEventForQueue(
     .first<SourceEventForQueue>();
 }
 
+/**
+ * Check if the same user sent identical text content within the last N seconds.
+ * Used to deduplicate rapid-fire repeated messages (user retapping when bot is slow).
+ */
+export async function findRecentDuplicateContent(
+    db: D1Database,
+    userId: number,
+    text: string,
+    windowSeconds: number = 30,
+): Promise<number | null> {
+    const cutoff = new Date(Date.now() - windowSeconds * 1000).toISOString();
+    const result = await db.prepare(
+        `SELECT id FROM source_events
+         WHERE user_id = ? AND text_raw = ? AND created_at_utc > ?
+         ORDER BY created_at_utc DESC LIMIT 1`
+    )
+        .bind(userId, text, cutoff)
+        .first<{ id: number }>();
+    return result?.id ?? null;
+}
+
 function isUniqueViolation(error: unknown): boolean {
   if (!(error instanceof Error)) {
     return false;

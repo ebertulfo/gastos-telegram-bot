@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { classifyMessageType } from "../src/db/source-events";
+import { describe, expect, it, vi } from "vitest";
+import { classifyMessageType, findRecentDuplicateContent } from "../src/db/source-events";
 
 describe("classifyMessageType", () => {
   it("classifies text updates", () => {
@@ -42,5 +42,31 @@ describe("classifyMessageType", () => {
     });
 
     expect(result).toBe("voice");
+  });
+});
+
+describe("findRecentDuplicateContent", () => {
+  it("returns null when no recent duplicate exists", async () => {
+    const mockDb = {
+      prepare: vi.fn(() => ({
+        bind: vi.fn(() => ({
+          first: vi.fn(async () => null),
+        })),
+      })),
+    } as unknown as D1Database;
+    const result = await findRecentDuplicateContent(mockDb, 1, "unique text", 30);
+    expect(result).toBeNull();
+  });
+
+  it("returns source_event_id when duplicate found", async () => {
+    const mockDb = {
+      prepare: vi.fn(() => ({
+        bind: vi.fn(() => ({
+          first: vi.fn(async () => ({ id: 42 })),
+        })),
+      })),
+    } as unknown as D1Database;
+    const result = await findRecentDuplicateContent(mockDb, 1, "duplicate text", 30);
+    expect(result).toBe(42);
   });
 });
