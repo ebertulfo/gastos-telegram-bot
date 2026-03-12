@@ -233,6 +233,72 @@ describe("createAgentTools", () => {
     expect(occurredAtUtc).toContain("2026-03-10");
   });
 
+  it("log_expense rejects occurred_at more than 30 days in the past", async () => {
+    const { insertExpense } = await import("../src/db/expenses");
+    vi.mocked(insertExpense).mockResolvedValueOnce(60);
+
+    const tools = createAgentTools(createMockEnv(), userId, 12345, timezone, currency);
+    const logTool = tools[0] as any;
+    await logTool.execute({
+      amount: 5,
+      currency: "SGD",
+      description: "Coffee",
+      category: "Food",
+      tags: [],
+      occurred_at: "2025-01-01",
+    });
+
+    const calls = vi.mocked(insertExpense).mock.calls;
+    const occurredAtUtc = calls[calls.length - 1][7] as string;
+    const today = new Date().toISOString().slice(0, 10);
+    expect(occurredAtUtc).toContain(today);
+  });
+
+  it("log_expense rejects occurred_at in the future", async () => {
+    const { insertExpense } = await import("../src/db/expenses");
+    vi.mocked(insertExpense).mockResolvedValueOnce(61);
+
+    const tools = createAgentTools(createMockEnv(), userId, 12345, timezone, currency);
+    const logTool = tools[0] as any;
+    await logTool.execute({
+      amount: 10,
+      currency: "SGD",
+      description: "Future lunch",
+      category: "Food",
+      tags: [],
+      occurred_at: "2099-01-01",
+    });
+
+    const calls = vi.mocked(insertExpense).mock.calls;
+    const occurredAtUtc = calls[calls.length - 1][7] as string;
+    const today = new Date().toISOString().slice(0, 10);
+    expect(occurredAtUtc).toContain(today);
+  });
+
+  it("log_expense accepts occurred_at within valid range (e.g. yesterday)", async () => {
+    const { insertExpense } = await import("../src/db/expenses");
+    vi.mocked(insertExpense).mockResolvedValueOnce(62);
+
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().slice(0, 10);
+
+    const tools = createAgentTools(createMockEnv(), userId, 12345, timezone, currency);
+    const logTool = tools[0] as any;
+    await logTool.execute({
+      amount: 18,
+      currency: "SGD",
+      description: "Lunch",
+      category: "Food",
+      tags: [],
+      occurred_at: yesterdayStr,
+    });
+
+    const calls = vi.mocked(insertExpense).mock.calls;
+    const occurredAtUtc = calls[calls.length - 1][7] as string;
+    expect(occurredAtUtc).toContain(yesterdayStr);
+  });
+
   it("log_expense defaults to now when occurred_at is not provided", async () => {
     const { insertExpense } = await import("../src/db/expenses");
     vi.mocked(insertExpense).mockResolvedValueOnce(51);

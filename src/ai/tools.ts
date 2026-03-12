@@ -35,9 +35,23 @@ export function createAgentTools(env: Env, userId: number, telegramId: number, t
         }),
         execute: async (input) => {
             const amountMinor = Math.round(input.amount * 100);
-            const occurredAtUtc = input.occurred_at
-                ? new Date(`${input.occurred_at}T12:00:00Z`).toISOString()
-                : new Date().toISOString();
+
+            // Validate occurred_at: reject dates >30 days in past or any future date
+            let occurredAtUtc: string;
+            if (input.occurred_at) {
+                const parsedDate = new Date(`${input.occurred_at}T12:00:00Z`);
+                const now = new Date();
+                const diffMs = now.getTime() - parsedDate.getTime();
+                const diffDays = diffMs / (1000 * 60 * 60 * 24);
+                if (diffDays > 30 || diffDays < 0) {
+                    console.warn(`[TOOL:log_expense] Rejected suspicious occurred_at="${input.occurred_at}" (${diffDays.toFixed(0)} days from now). Defaulting to now.`);
+                    occurredAtUtc = now.toISOString();
+                } else {
+                    occurredAtUtc = parsedDate.toISOString();
+                }
+            } else {
+                occurredAtUtc = new Date().toISOString();
+            }
 
             // Create a real source event to avoid source_event_id=0 collision
             const sourceEventId = await createAgentSourceEvent(
