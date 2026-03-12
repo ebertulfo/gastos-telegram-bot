@@ -9,6 +9,7 @@ vi.mock("../src/rate-limiter", () => ({
 
 type MockDbOptions = {
   duplicate?: boolean;
+  contentDuplicate?: boolean;
   user?: {
     id: number;
     telegram_user_id: number;
@@ -44,6 +45,16 @@ function createMockDb(options: MockDbOptions = {}) {
   });
 
   const prepare = vi.fn((query: string) => {
+    // Content dedup query — must come before the generic "SELECT id FROM source_events" branch
+    if (query.includes("text_raw = ?") && query.includes("created_at_utc >")) {
+      return {
+        bind: vi.fn(() => ({
+          first: vi.fn(async () =>
+            options.contentDuplicate ? { id: 999 } : null
+          )
+        }))
+      };
+    }
     if (query.includes("INSERT INTO source_events")) {
       return { bind: vi.fn(() => ({ first: insertFirst })) };
     }
@@ -215,6 +226,31 @@ describe("telegram webhook", () => {
     const json = (await response.json()) as WebhookResponse;
     expect(json.status).toBe("rate_limited");
     expect(response.status).toBe(429);
+    expect(send).not.toHaveBeenCalled();
+
+    fetchMock.mockRestore();
+  });
+
+  it("skips enqueueing content-duplicate messages", async () => {
+    vi.mocked(rateLimiter.checkRateLimit).mockResolvedValue(true);
+
+    const app = createApp();
+    const { env, send } = createEnv({ duplicate: false, contentDuplicate: true });
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+
+    const response = await app.fetch(
+      new Request("http://localhost/webhook/telegram", {
+        method: "POST",
+        body: buildTextUpdateBody(),
+        headers: { "content-type": "application/json" }
+      }),
+      env
+    );
+
+    const json = (await response.json()) as WebhookResponse;
+    expect(json.status).toBe("duplicate");
     expect(send).not.toHaveBeenCalled();
 
     fetchMock.mockRestore();

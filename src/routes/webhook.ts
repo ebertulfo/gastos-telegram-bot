@@ -1,6 +1,6 @@
 import type { Context } from "hono";
 import { z } from "zod";
-import { persistSourceEvent, setSourceEventR2ObjectKey } from "../db/source-events";
+import { persistSourceEvent, setSourceEventR2ObjectKey, findRecentDuplicateContent } from "../db/source-events";
 import { upsertUserForIngestion } from "../db/users";
 import { handleOnboardingOrCommand } from "../onboarding";
 import { checkRateLimit } from "../rate-limiter";
@@ -99,6 +99,24 @@ export async function handleTelegramWebhook(c: Context<{ Bindings: Env }>) {
     if (!allowed) {
       await sendTelegramChatMessage(c.env, chatId, "⏳ You are sending messages too fast. Please wait a bit.");
       return c.json({ status: "rate_limited" }, 429);
+    }
+
+    // Content-based dedup: skip if same user sent identical text in last 30 seconds
+    // (catches rapid re-taps when bot appears slow)
+    if (update.message.text) {
+      const recentDuplicateId = await findRecentDuplicateContent(
+        c.env.DB,
+        user.id,
+        update.message.text,
+      );
+      if (recentDuplicateId !== null) {
+        console.warn("Content-duplicate message skipped", {
+          chatId,
+          text: update.message.text.slice(0, 50),
+          originalSourceEventId: recentDuplicateId,
+        });
+        return c.json({ status: "duplicate" }, 200);
+      }
     }
 
     // Send contextual ack message immediately to reduce perceived latency
