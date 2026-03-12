@@ -79,10 +79,10 @@ describe("createGastosAgent", () => {
         );
     });
 
-    it("creates agent with model gpt-4.1-mini", () => {
+    it("creates agent with model gpt-5-mini", () => {
         createGastosAgent(mockEnv, 1, 12345, "UTC", "USD");
         expect(Agent).toHaveBeenCalledWith(
-            expect.objectContaining({ model: "gpt-4.1-mini" })
+            expect.objectContaining({ model: "gpt-5-mini" })
         );
     });
 

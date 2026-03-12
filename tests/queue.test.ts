@@ -8,7 +8,12 @@ vi.mock("@openai/agents", () => ({
     finalOutput: "Logged: PHP 150.00 | Food | lunch",
     rawResponses: [{ usage: { totalTokens: 500 } }],
   }),
+  setDefaultModelProvider: vi.fn(),
   getGlobalTraceProvider: vi.fn(() => ({ forceFlush: vi.fn().mockResolvedValue(undefined) })),
+}));
+
+vi.mock("@openai/agents-openai", () => ({
+  OpenAIProvider: vi.fn(),
 }));
 
 // Mock agent creation
