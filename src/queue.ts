@@ -1,4 +1,4 @@
-import { run, getGlobalTraceProvider, setDefaultModelProvider } from "@openai/agents";
+import { run, getGlobalTraceProvider, setDefaultModelProvider, addTraceProcessor } from "@openai/agents";
 import { OpenAIProvider } from "@openai/agents-openai";
 import type { AgentInputItem } from "@openai/agents";
 import { createGastosAgent } from "./ai/agent";
@@ -8,7 +8,10 @@ import { sendTelegramChatMessage, sendChatAction } from "./telegram/messages";
 import { checkAndRefreshTokenQuota, incrementTokenUsage } from "./db/quotas";
 import { createTracer } from "./tracer";
 import type { ITracer } from "./tracer";
+import { agentTraceProcessor } from "./ai/agent-trace-processor";
 import type { Env, ParseQueueMessage } from "./types";
+
+addTraceProcessor(agentTraceProcessor);
 
 export async function handleParseQueueBatch(
   batch: MessageBatch<ParseQueueMessage>,
@@ -139,7 +142,12 @@ async function processMessage(
     }
   };
 
-  result = await tracer.span(traceId, "ai.semantic_chat", userId, runAgent, { model: "gpt-5-mini" });
+  agentTraceProcessor.setContext(traceId, userId, tracer);
+  try {
+    result = await tracer.span(traceId, "ai.semantic_chat", userId, runAgent, { model: "gpt-5-mini" });
+  } finally {
+    agentTraceProcessor.clearContext();
+  }
 
   if (!result) return;
 
