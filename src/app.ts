@@ -101,6 +101,53 @@ export function createApp() {
     const result = await backfillVectorize(c.env);
     return c.json(result);
   });
+
+  app.get("/debug/traces/summary", async (c) => {
+    const hours = Math.max(1, parseInt(c.req.query("hours") ?? "24") || 24);
+    const { results } = await c.env.DB.prepare(
+      `SELECT
+        span_name,
+        COUNT(*) as count,
+        CAST(AVG(duration_ms) AS INTEGER) as avg_ms,
+        MIN(duration_ms) as min_ms,
+        MAX(duration_ms) as max_ms
+      FROM traces
+      WHERE created_at_utc > datetime('now', '-' || ? || ' hours')
+      GROUP BY span_name
+      ORDER BY avg_ms DESC`
+    ).bind(hours).all();
+    return c.json({ hours, spans: results });
+  });
+
+  app.get("/debug/traces/recent", async (c) => {
+    const limit = Math.min(parseInt(c.req.query("limit") ?? "20"), 100);
+    const { results } = await c.env.DB.prepare(
+      `SELECT
+        trace_id,
+        COUNT(*) as span_count,
+        SUM(duration_ms) as total_ms,
+        MIN(started_at_utc) as started_at,
+        GROUP_CONCAT(span_name, ' -> ') as flow
+      FROM traces
+      WHERE created_at_utc > datetime('now', '-24 hours')
+      GROUP BY trace_id
+      ORDER BY started_at DESC
+      LIMIT ?`
+    ).bind(limit).all();
+    return c.json({ traces: results });
+  });
+
+  app.get("/debug/traces/:traceId", async (c) => {
+    const traceId = c.req.param("traceId");
+    const { results } = await c.env.DB.prepare(
+      `SELECT span_name, duration_ms, status, error_message, metadata, started_at_utc
+       FROM traces
+       WHERE trace_id = ?
+       ORDER BY started_at_utc ASC`
+    ).bind(traceId).all();
+    const sumMs = (results ?? []).reduce((sum: number, r: any) => sum + (r.duration_ms ?? 0), 0);
+    return c.json({ traceId, spans: results, sumMs });
+  });
   // ── END DEBUG ENDPOINTS ────────────────────────────────────────────
 
   app.get("/openapi.json", (c) => c.json(buildOpenApiSpec(new URL(c.req.url).origin)));
