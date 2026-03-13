@@ -237,6 +237,35 @@ describe("AgentTraceProcessor", () => {
       });
     });
 
+    it("skips spans with invalid timestamps", async () => {
+      processor.setContext("trace-1", 42, mockTracer.tracer);
+
+      const span = mockSpan<GenerationSpanData>(
+        { type: "generation", model: "gpt-5-mini" },
+        "not-a-date",
+        "also-not-a-date",
+      );
+      await processor.onSpanEnd(span);
+
+      expect(mockTracer.recorded).toHaveLength(0);
+    });
+
+    it("truncates long tool input", async () => {
+      processor.setContext("trace-1", 42, mockTracer.tracer);
+
+      const longInput = "y".repeat(1000);
+      const span = mockSpan<FunctionSpanData>(
+        { type: "function", name: "get_financial_report", input: longInput, output: "ok" },
+        "2026-03-13T10:00:00.000Z",
+        "2026-03-13T10:00:01.000Z",
+      );
+      await processor.onSpanEnd(span);
+
+      const input = mockTracer.recorded[0].metadata?.input as string;
+      expect(input.length).toBeLessThanOrEqual(503);
+      expect(input.endsWith("...")).toBe(true);
+    });
+
     it("no-op methods do not throw", async () => {
       const trace = {} as any;
       const span = {} as any;

@@ -30,6 +30,8 @@ export class AgentTraceProcessor implements TracingProcessor {
     if (!startedAt || !endedAt) return;
 
     const durationMs = Date.parse(endedAt) - Date.parse(startedAt);
+    if (!Number.isFinite(durationMs) || durationMs < 0) return;
+
     const { traceId, userId, tracer } = this.context;
     const data = span.spanData;
 
@@ -41,13 +43,12 @@ export class AgentTraceProcessor implements TracingProcessor {
         outputTokens: data.usage?.output_tokens ?? 0,
       });
     } else if (data.type === "function") {
-      const output = data.output.length > MAX_OUTPUT_LENGTH
-        ? data.output.slice(0, MAX_OUTPUT_LENGTH) + "..."
-        : data.output;
+      const truncate = (s: string) =>
+        s.length > MAX_OUTPUT_LENGTH ? s.slice(0, MAX_OUTPUT_LENGTH) + "..." : s;
       tracer.record(traceId, "ai.tool", userId, durationMs, {
         name: data.name,
-        input: data.input,
-        output,
+        input: truncate(data.input),
+        output: truncate(data.output),
       });
     }
   }
