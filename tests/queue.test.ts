@@ -10,6 +10,7 @@ vi.mock("@openai/agents", () => ({
   }),
   setDefaultModelProvider: vi.fn(),
   getGlobalTraceProvider: vi.fn(() => ({ forceFlush: vi.fn().mockResolvedValue(undefined) })),
+  addTraceProcessor: vi.fn(),
 }));
 
 vi.mock("@openai/agents-openai", () => ({
