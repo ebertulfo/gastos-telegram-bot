@@ -64,6 +64,26 @@ export class Tracer {
     }
   }
 
+  /** Records a pre-computed span (e.g. queue wait time) without executing a function. */
+  record(
+    traceId: string,
+    spanName: string,
+    userId: number | null,
+    durationMs: number,
+    metadata?: Record<string, unknown>,
+  ): void {
+    this.spans.push({
+      traceId,
+      spanName,
+      userId,
+      startedAtUtc: new Date(Date.now() - durationMs).toISOString(),
+      durationMs,
+      status: "ok",
+      errorMessage: null,
+      metadata: metadata ? JSON.stringify(metadata) : null,
+    });
+  }
+
   async flush(): Promise<void> {
     try {
       if (this.spans.length === 0) return;
@@ -118,4 +138,47 @@ export class Tracer {
       // Fire-and-forget: never let trace persistence break the actual request
     }
   }
+}
+
+/** Interface shared by Tracer and noopTracer. Explicit interface (not Pick) to preserve generic <T> on span(). */
+export interface ITracer {
+  span<T>(
+    traceId: string,
+    spanName: string,
+    userId: number | null,
+    fn: () => Promise<T>,
+    metadata?: Record<string, unknown>,
+  ): Promise<T>;
+  flush(): Promise<void>;
+  readonly pendingCount: number;
+  record(
+    traceId: string,
+    spanName: string,
+    userId: number | null,
+    durationMs: number,
+    metadata?: Record<string, unknown>,
+  ): void;
+}
+
+/** No-op tracer that executes functions without recording. */
+export const noopTracer: ITracer = {
+  async span<T>(
+    _traceId: string,
+    _spanName: string,
+    _userId: number | null,
+    fn: () => Promise<T>,
+    _metadata?: Record<string, unknown>,
+  ): Promise<T> {
+    return fn();
+  },
+  async flush() {},
+  get pendingCount() {
+    return 0;
+  },
+  record() {},
+};
+
+/** Creates a Tracer if KV is available, otherwise returns noopTracer. */
+export function createTracer(db: D1Database, kv?: KVNamespace): ITracer {
+  return kv ? new Tracer(db, kv) : noopTracer;
 }

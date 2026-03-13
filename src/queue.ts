@@ -6,7 +6,8 @@ import { D1Session } from "./ai/session";
 import { transcribeR2Audio } from "./ai/openai";
 import { sendTelegramChatMessage, sendChatAction } from "./telegram/messages";
 import { checkAndRefreshTokenQuota, incrementTokenUsage } from "./db/quotas";
-import { Tracer } from "./tracer";
+import { createTracer } from "./tracer";
+import type { ITracer } from "./tracer";
 import type { Env, ParseQueueMessage } from "./types";
 
 export async function handleParseQueueBatch(
@@ -16,15 +17,11 @@ export async function handleParseQueueBatch(
 ) {
   for (const message of batch.messages) {
     const traceId = message.body.traceId ?? crypto.randomUUID();
-    const tracer = env.TRACES_KV ? new Tracer(env.DB, env.TRACES_KV) : null;
+    const tracer = createTracer(env.DB, env.TRACES_KV);
     try {
-      if (tracer) {
-        await tracer.span(traceId, "queue.receipt", message.body.userId, async () => {
-          await processMessage(env, ctx, message.body, tracer, traceId);
-        });
-      } else {
+      await tracer.span(traceId, "queue.receipt", message.body.userId, async () => {
         await processMessage(env, ctx, message.body, tracer, traceId);
-      }
+      });
       message.ack();
     } catch (error) {
       console.error("Queue message processing failed", {
@@ -34,9 +31,7 @@ export async function handleParseQueueBatch(
       });
       message.retry();
     } finally {
-      if (tracer) {
-        ctx.waitUntil(tracer.flush());
-      }
+      ctx.waitUntil(tracer.flush());
     }
   }
 }
@@ -45,13 +40,21 @@ async function processMessage(
   env: Env,
   ctx: ExecutionContext,
   body: ParseQueueMessage,
-  tracer: Tracer | null,
+  tracer: ITracer,
   traceId: string,
 ): Promise<void> {
   const { userId, telegramId, timezone, currency, tier } = body;
 
+  // Record queue wait time (time between webhook enqueue and queue dequeue)
+  if (body.enqueuedAtUtc) {
+    const waitMs = Date.now() - new Date(body.enqueuedAtUtc).getTime();
+    tracer.record(traceId, "queue.wait_time", userId, waitMs);
+  }
+
   // 1. Check quota
-  const allowed = await checkAndRefreshTokenQuota(env.DB, userId, telegramId, tier);
+  const allowed = await tracer.span(traceId, "queue.quota_check", userId, async () => {
+    return checkAndRefreshTokenQuota(env.DB, userId, telegramId, tier);
+  });
   if (!allowed) {
     await sendTelegramChatMessage(
       env,
@@ -65,7 +68,9 @@ async function processMessage(
   setDefaultModelProvider(new OpenAIProvider({ apiKey: env.OPENAI_API_KEY }));
 
   // 3. Send typing indicator
-  await sendChatAction(env, telegramId, "typing");
+  await tracer.span(traceId, "queue.typing_indicator", userId, async () => {
+    await sendChatAction(env, telegramId, "typing");
+  });
 
   // 4. Pre-process media into agent input
   let agentInput: string | AgentInputItem[];
@@ -73,13 +78,9 @@ async function processMessage(
   if (body.mediaType === "voice" && body.r2ObjectKey) {
     // Voice: transcribe via Whisper, then pass transcript as string
     let transcript: string | null;
-    if (tracer) {
-      transcript = await tracer.span(traceId, "ai.transcribe", userId, async () => {
-        return transcribeR2Audio(env, body.r2ObjectKey!);
-      });
-    } else {
-      transcript = await transcribeR2Audio(env, body.r2ObjectKey);
-    }
+    transcript = await tracer.span(traceId, "ai.transcribe", userId, async () => {
+      return transcribeR2Audio(env, body.r2ObjectKey!);
+    });
     if (!transcript) {
       await sendTelegramChatMessage(env, telegramId, "Could not transcribe your voice message. Please try again.");
       return;
@@ -88,13 +89,9 @@ async function processMessage(
   } else if (body.mediaType === "photo" && body.r2ObjectKey) {
     // Photo: fetch from R2, convert to base64, create multimodal input
     let object: R2ObjectBody | null;
-    if (tracer) {
-      object = await tracer.span(traceId, "queue.media_fetch", userId, async () => {
-        return env.MEDIA_BUCKET.get(body.r2ObjectKey!);
-      }, { r2Key: body.r2ObjectKey });
-    } else {
-      object = await env.MEDIA_BUCKET.get(body.r2ObjectKey);
-    }
+    object = await tracer.span(traceId, "queue.media_fetch", userId, async () => {
+      return env.MEDIA_BUCKET.get(body.r2ObjectKey!);
+    }, { r2Key: body.r2ObjectKey });
     if (!object) {
       await sendTelegramChatMessage(env, telegramId, "Could not retrieve the image. Please try again.");
       return;
@@ -142,11 +139,7 @@ async function processMessage(
     }
   };
 
-  if (tracer) {
-    result = await tracer.span(traceId, "ai.semantic_chat", userId, runAgent, { model: "gpt-5-mini" });
-  } else {
-    result = await runAgent();
-  }
+  result = await tracer.span(traceId, "ai.semantic_chat", userId, runAgent, { model: "gpt-5-mini" });
 
   if (!result) return;
 
@@ -156,18 +149,16 @@ async function processMessage(
     0,
   );
   if (totalTokens > 0) {
-    await incrementTokenUsage(env.DB, userId, totalTokens);
+    await tracer.span(traceId, "queue.token_increment", userId, async () => {
+      await incrementTokenUsage(env.DB, userId, totalTokens);
+    });
   }
 
   // 8. Send result to Telegram
   const reply = result.finalOutput || "I couldn't process that. Please try again.";
-  if (tracer) {
-    await tracer.span(traceId, "telegram.send_reply", userId, async () => {
-      await sendTelegramChatMessage(env, telegramId, reply);
-    });
-  } else {
+  await tracer.span(traceId, "telegram.send_reply", userId, async () => {
     await sendTelegramChatMessage(env, telegramId, reply);
-  }
+  });
 
   // 9. Flush traces in background
   ctx.waitUntil(getGlobalTraceProvider().forceFlush());

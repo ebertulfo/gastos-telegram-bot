@@ -6,7 +6,7 @@ import { handleOnboardingOrCommand } from "../onboarding";
 import { checkRateLimit } from "../rate-limiter";
 import { sendTelegramChatMessage } from "../telegram/messages";
 import { uploadTelegramMediaToR2 } from "../telegram/media";
-import { Tracer } from "../tracer";
+import { createTracer } from "../tracer";
 import { getAckMessage } from "../ack-messages";
 import config from "../config.json";
 import type { Env, ParseQueueMessage, TelegramUpdate } from "../types";
@@ -69,11 +69,13 @@ export async function handleTelegramWebhook(c: Context<{ Bindings: Env }>) {
   }
 
   const traceId = crypto.randomUUID();
-  const tracer = c.env.TRACES_KV ? new Tracer(c.env.DB, c.env.TRACES_KV) : null;
+  const tracer = createTracer(c.env.DB, c.env.TRACES_KV);
 
   const handleValidPayload = async () => {
     const update = payload.data as TelegramUpdate;
-    const handled = await handleOnboardingOrCommand(c.env, update);
+    const handled = await tracer.span(traceId, "webhook.onboarding", userId, async () => {
+      return handleOnboardingOrCommand(c.env, update);
+    });
     if (handled) {
       return c.json({ status: "handled", message: "Message handled by command/onboarding flow" }, 200);
     }
@@ -92,10 +94,14 @@ export async function handleTelegramWebhook(c: Context<{ Bindings: Env }>) {
       return c.json({ status: "ignored", message: "User is banned by config" }, 200);
     }
 
-    const user = await upsertUserForIngestion(c.env, telegramUserId, chatId);
+    const user = await tracer.span(traceId, "webhook.user_upsert", userId, async () => {
+      return upsertUserForIngestion(c.env, telegramUserId, chatId);
+    });
 
     // Rate limit check for all message types
-    const allowed = await checkRateLimit(c.env, telegramUserId);
+    const allowed = await tracer.span(traceId, "webhook.rate_limit", userId, async () => {
+      return checkRateLimit(c.env, telegramUserId);
+    });
     if (!allowed) {
       await sendTelegramChatMessage(c.env, chatId, "⏳ You are sending messages too fast. Please wait a bit.");
       return c.json({ status: "rate_limited" }, 429);
@@ -115,11 +121,10 @@ export async function handleTelegramWebhook(c: Context<{ Bindings: Env }>) {
     // Content-based dedup: skip if same user sent identical text in last 30 seconds
     // (catches rapid re-taps when bot appears slow)
     if (update.message.text) {
-      const recentDuplicateId = await findRecentDuplicateContent(
-        c.env.DB,
-        user.id,
-        update.message.text,
-      );
+      const messageText = update.message.text;
+      const recentDuplicateId = await tracer.span(traceId, "webhook.dedup_check", user.id, async () => {
+        return findRecentDuplicateContent(c.env.DB, user.id, messageText);
+      });
       if (recentDuplicateId !== null) {
         console.warn("Content-duplicate message skipped", {
           chatId,
@@ -130,18 +135,16 @@ export async function handleTelegramWebhook(c: Context<{ Bindings: Env }>) {
       }
     }
 
-    const sourceEvent = await persistSourceEvent(c.env, user.id, update);
+    const sourceEvent = await tracer.span(traceId, "webhook.source_event", user.id, async () => {
+      return persistSourceEvent(c.env, user.id, update);
+    });
     let uploadedR2ObjectKey: string | null = null;
 
     if (!sourceEvent.duplicate) {
       try {
-        if (tracer) {
-          uploadedR2ObjectKey = await tracer.span(traceId, "webhook.media_upload", user.id, async () => {
-            return uploadTelegramMediaToR2(c.env, update, sourceEvent.id);
-          });
-        } else {
-          uploadedR2ObjectKey = await uploadTelegramMediaToR2(c.env, update, sourceEvent.id);
-        }
+        uploadedR2ObjectKey = await tracer.span(traceId, "webhook.media_upload", user.id, async () => {
+          return uploadTelegramMediaToR2(c.env, update, sourceEvent.id);
+        });
         if (uploadedR2ObjectKey) {
           await setSourceEventR2ObjectKey(c.env, sourceEvent.id, uploadedR2ObjectKey);
         }
@@ -163,6 +166,7 @@ export async function handleTelegramWebhook(c: Context<{ Bindings: Env }>) {
 
     const queueMessage: ParseQueueMessage = {
       traceId,
+      enqueuedAtUtc: new Date().toISOString(),
       userId: user.id,
       telegramId: chatId,
       timezone: user.timezone ?? "UTC",
@@ -174,7 +178,9 @@ export async function handleTelegramWebhook(c: Context<{ Bindings: Env }>) {
     };
 
     if (!sourceEvent.duplicate) {
-      await c.env.INGEST_QUEUE.send(queueMessage);
+      await tracer.span(traceId, "webhook.queue_enqueue", user.id, async () => {
+        await c.env.INGEST_QUEUE.send(queueMessage);
+      });
     }
 
     return c.json(
@@ -185,13 +191,13 @@ export async function handleTelegramWebhook(c: Context<{ Bindings: Env }>) {
     );
   };
 
-  if (tracer) {
-    const userId = payload.data.message?.from?.id ?? payload.data.callback_query?.from?.id ?? null;
-    const messageType = payload.data.message?.photo ? "photo" : payload.data.message?.voice ? "voice" : "text";
-    const response = await tracer.span(traceId, "webhook.receive", userId, handleValidPayload, { messageType });
+  const userId = payload.data.message?.from?.id ?? payload.data.callback_query?.from?.id ?? null;
+  const messageType = payload.data.message?.photo ? "photo" : payload.data.message?.voice ? "voice" : "text";
+  const response = await tracer.span(traceId, "webhook.receive", userId, handleValidPayload, { messageType });
+  try {
     c.executionCtx.waitUntil(tracer.flush());
-    return response;
-  } else {
-    return handleValidPayload();
+  } catch {
+    // No ExecutionContext in tests — flush is best-effort
   }
+  return response;
 }

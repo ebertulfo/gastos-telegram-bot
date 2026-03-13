@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
-import { Tracer } from "../src/tracer";
+import { Tracer, createTracer, noopTracer } from "../src/tracer";
+import type { ITracer } from "../src/tracer";
 
 declare module "cloudflare:test" {
   interface ProvidedEnv {
@@ -135,5 +136,59 @@ describe("Tracer", () => {
       // flush should NOT throw
       await brokenTracer.flush();
     });
+  });
+
+  describe("record()", () => {
+    it("records a pre-computed span without executing a function", async () => {
+      tracer.record("trace-rec", "queue.wait_time", 1, 250, { source: "test" });
+      expect(tracer.pendingCount).toBe(1);
+      await tracer.flush();
+
+      const row = await env.DB.prepare("SELECT * FROM traces WHERE trace_id = ?")
+        .bind("trace-rec")
+        .first<{ span_name: string; duration_ms: number; status: string; metadata: string }>();
+      expect(row!.span_name).toBe("queue.wait_time");
+      expect(row!.duration_ms).toBe(250);
+      expect(row!.status).toBe("ok");
+      expect(JSON.parse(row!.metadata).source).toBe("test");
+    });
+  });
+});
+
+describe("noopTracer", () => {
+  it("executes the function and returns its result", async () => {
+    const result = await noopTracer.span("t", "op", null, async () => 42);
+    expect(result).toBe(42);
+  });
+
+  it("does not accumulate spans", async () => {
+    await noopTracer.span("t", "op", null, async () => "ok");
+    expect(noopTracer.pendingCount).toBe(0);
+  });
+
+  it("flush is a no-op", async () => {
+    await noopTracer.flush(); // should not throw
+  });
+
+  it("record is a no-op", () => {
+    noopTracer.record("t", "op", null, 100);
+    expect(noopTracer.pendingCount).toBe(0);
+  });
+});
+
+describe("createTracer()", () => {
+  it("returns a real Tracer when KV is provided", () => {
+    const t = createTracer(env.DB, env.TRACES_KV);
+    expect(t).toBeInstanceOf(Tracer);
+  });
+
+  it("returns noopTracer when KV is not provided", () => {
+    const t = createTracer(env.DB);
+    expect(t).toBe(noopTracer);
+  });
+
+  it("returns noopTracer when KV is undefined", () => {
+    const t = createTracer(env.DB, undefined);
+    expect(t).toBe(noopTracer);
   });
 });
