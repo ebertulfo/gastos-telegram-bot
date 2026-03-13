@@ -64,6 +64,7 @@ export type Env = {
 
 export type ParseQueueMessage = {
   traceId?: string;
+  enqueuedAtUtc?: string;
   userId: number;
   telegramId: number;
   timezone: string;

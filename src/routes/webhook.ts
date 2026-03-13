@@ -166,6 +166,7 @@ export async function handleTelegramWebhook(c: Context<{ Bindings: Env }>) {
 
     const queueMessage: ParseQueueMessage = {
       traceId,
+      enqueuedAtUtc: new Date().toISOString(),
       userId: user.id,
       telegramId: chatId,
       timezone: user.timezone ?? "UTC",

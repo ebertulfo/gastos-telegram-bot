@@ -45,8 +45,16 @@ async function processMessage(
 ): Promise<void> {
   const { userId, telegramId, timezone, currency, tier } = body;
 
+  // Record queue wait time (time between webhook enqueue and queue dequeue)
+  if (body.enqueuedAtUtc) {
+    const waitMs = Date.now() - new Date(body.enqueuedAtUtc).getTime();
+    tracer.record(traceId, "queue.wait_time", userId, waitMs);
+  }
+
   // 1. Check quota
-  const allowed = await checkAndRefreshTokenQuota(env.DB, userId, telegramId, tier);
+  const allowed = await tracer.span(traceId, "queue.quota_check", userId, async () => {
+    return checkAndRefreshTokenQuota(env.DB, userId, telegramId, tier);
+  });
   if (!allowed) {
     await sendTelegramChatMessage(
       env,
@@ -60,7 +68,9 @@ async function processMessage(
   setDefaultModelProvider(new OpenAIProvider({ apiKey: env.OPENAI_API_KEY }));
 
   // 3. Send typing indicator
-  await sendChatAction(env, telegramId, "typing");
+  await tracer.span(traceId, "queue.typing_indicator", userId, async () => {
+    await sendChatAction(env, telegramId, "typing");
+  });
 
   // 4. Pre-process media into agent input
   let agentInput: string | AgentInputItem[];
@@ -139,7 +149,9 @@ async function processMessage(
     0,
   );
   if (totalTokens > 0) {
-    await incrementTokenUsage(env.DB, userId, totalTokens);
+    await tracer.span(traceId, "queue.token_increment", userId, async () => {
+      await incrementTokenUsage(env.DB, userId, totalTokens);
+    });
   }
 
   // 8. Send result to Telegram
