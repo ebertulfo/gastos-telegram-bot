@@ -73,7 +73,9 @@ export async function handleTelegramWebhook(c: Context<{ Bindings: Env }>) {
 
   const handleValidPayload = async () => {
     const update = payload.data as TelegramUpdate;
-    const handled = await handleOnboardingOrCommand(c.env, update);
+    const handled = await tracer.span(traceId, "webhook.onboarding", userId, async () => {
+      return handleOnboardingOrCommand(c.env, update);
+    });
     if (handled) {
       return c.json({ status: "handled", message: "Message handled by command/onboarding flow" }, 200);
     }
@@ -92,10 +94,14 @@ export async function handleTelegramWebhook(c: Context<{ Bindings: Env }>) {
       return c.json({ status: "ignored", message: "User is banned by config" }, 200);
     }
 
-    const user = await upsertUserForIngestion(c.env, telegramUserId, chatId);
+    const user = await tracer.span(traceId, "webhook.user_upsert", userId, async () => {
+      return upsertUserForIngestion(c.env, telegramUserId, chatId);
+    });
 
     // Rate limit check for all message types
-    const allowed = await checkRateLimit(c.env, telegramUserId);
+    const allowed = await tracer.span(traceId, "webhook.rate_limit", userId, async () => {
+      return checkRateLimit(c.env, telegramUserId);
+    });
     if (!allowed) {
       await sendTelegramChatMessage(c.env, chatId, "⏳ You are sending messages too fast. Please wait a bit.");
       return c.json({ status: "rate_limited" }, 429);
@@ -115,11 +121,10 @@ export async function handleTelegramWebhook(c: Context<{ Bindings: Env }>) {
     // Content-based dedup: skip if same user sent identical text in last 30 seconds
     // (catches rapid re-taps when bot appears slow)
     if (update.message.text) {
-      const recentDuplicateId = await findRecentDuplicateContent(
-        c.env.DB,
-        user.id,
-        update.message.text,
-      );
+      const messageText = update.message.text;
+      const recentDuplicateId = await tracer.span(traceId, "webhook.dedup_check", user.id, async () => {
+        return findRecentDuplicateContent(c.env.DB, user.id, messageText);
+      });
       if (recentDuplicateId !== null) {
         console.warn("Content-duplicate message skipped", {
           chatId,
@@ -130,7 +135,9 @@ export async function handleTelegramWebhook(c: Context<{ Bindings: Env }>) {
       }
     }
 
-    const sourceEvent = await persistSourceEvent(c.env, user.id, update);
+    const sourceEvent = await tracer.span(traceId, "webhook.source_event", user.id, async () => {
+      return persistSourceEvent(c.env, user.id, update);
+    });
     let uploadedR2ObjectKey: string | null = null;
 
     if (!sourceEvent.duplicate) {
@@ -170,7 +177,9 @@ export async function handleTelegramWebhook(c: Context<{ Bindings: Env }>) {
     };
 
     if (!sourceEvent.duplicate) {
-      await c.env.INGEST_QUEUE.send(queueMessage);
+      await tracer.span(traceId, "webhook.queue_enqueue", user.id, async () => {
+        await c.env.INGEST_QUEUE.send(queueMessage);
+      });
     }
 
     return c.json(
