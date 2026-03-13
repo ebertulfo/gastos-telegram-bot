@@ -6,7 +6,7 @@ import { handleOnboardingOrCommand } from "../onboarding";
 import { checkRateLimit } from "../rate-limiter";
 import { sendTelegramChatMessage } from "../telegram/messages";
 import { uploadTelegramMediaToR2 } from "../telegram/media";
-import { Tracer } from "../tracer";
+import { createTracer } from "../tracer";
 import { getAckMessage } from "../ack-messages";
 import config from "../config.json";
 import type { Env, ParseQueueMessage, TelegramUpdate } from "../types";
@@ -69,7 +69,7 @@ export async function handleTelegramWebhook(c: Context<{ Bindings: Env }>) {
   }
 
   const traceId = crypto.randomUUID();
-  const tracer = c.env.TRACES_KV ? new Tracer(c.env.DB, c.env.TRACES_KV) : null;
+  const tracer = createTracer(c.env.DB, c.env.TRACES_KV);
 
   const handleValidPayload = async () => {
     const update = payload.data as TelegramUpdate;
@@ -135,13 +135,9 @@ export async function handleTelegramWebhook(c: Context<{ Bindings: Env }>) {
 
     if (!sourceEvent.duplicate) {
       try {
-        if (tracer) {
-          uploadedR2ObjectKey = await tracer.span(traceId, "webhook.media_upload", user.id, async () => {
-            return uploadTelegramMediaToR2(c.env, update, sourceEvent.id);
-          });
-        } else {
-          uploadedR2ObjectKey = await uploadTelegramMediaToR2(c.env, update, sourceEvent.id);
-        }
+        uploadedR2ObjectKey = await tracer.span(traceId, "webhook.media_upload", user.id, async () => {
+          return uploadTelegramMediaToR2(c.env, update, sourceEvent.id);
+        });
         if (uploadedR2ObjectKey) {
           await setSourceEventR2ObjectKey(c.env, sourceEvent.id, uploadedR2ObjectKey);
         }
@@ -185,13 +181,13 @@ export async function handleTelegramWebhook(c: Context<{ Bindings: Env }>) {
     );
   };
 
-  if (tracer) {
-    const userId = payload.data.message?.from?.id ?? payload.data.callback_query?.from?.id ?? null;
-    const messageType = payload.data.message?.photo ? "photo" : payload.data.message?.voice ? "voice" : "text";
-    const response = await tracer.span(traceId, "webhook.receive", userId, handleValidPayload, { messageType });
+  const userId = payload.data.message?.from?.id ?? payload.data.callback_query?.from?.id ?? null;
+  const messageType = payload.data.message?.photo ? "photo" : payload.data.message?.voice ? "voice" : "text";
+  const response = await tracer.span(traceId, "webhook.receive", userId, handleValidPayload, { messageType });
+  try {
     c.executionCtx.waitUntil(tracer.flush());
-    return response;
-  } else {
-    return handleValidPayload();
+  } catch {
+    // No ExecutionContext in tests — flush is best-effort
   }
+  return response;
 }
