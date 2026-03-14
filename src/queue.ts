@@ -133,6 +133,7 @@ async function processMessage(
 
       for await (const event of stream) {
         if (event.type === "run_item_stream_event" && event.name === "tool_called") {
+          // SDK stream types don't expose rawItem on RunItem union — cast needed
           const rawItem = (event.item as any).rawItem;
           const toolName = rawItem?.name ?? "";
           await manager.sendDraft(getToolStatusText(toolName));
