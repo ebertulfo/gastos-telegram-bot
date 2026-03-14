@@ -28,20 +28,40 @@ describe("getPeriodUtcRange", () => {
 });
 
 describe("formatTotalsMessage", () => {
-  it("formats output contract", () => {
-    const text = formatTotalsMessage({
-      currency: "SGD",
-      period: "today",
-      totals: {
-        totalMinor: 123456,
-        count: 18,
-        needsReviewCount: 3
-      }
+    it("formats output contract", () => {
+        const text = formatTotalsMessage({
+            currency: "SGD",
+            period: "today",
+            totals: {
+                totalMinor: 123456,
+                count: 18,
+                needsReviewCount: 3,
+            },
+        });
+
+        expect(text).toContain("Today");
+        expect(text).toContain("SGD 1,234.56");
+        expect(text).toContain("18 expenses");
+        expect(text).toContain("3 need review");
+        // Should NOT contain redundant labels
+        expect(text).not.toContain("Count:");
+        expect(text).not.toContain("Total:");
     });
 
-    expect(text).toContain("Today");
-    expect(text).toContain("Total: SGD 1,234.56");
-    expect(text).toContain("Count: (18 expenses)");
-    expect(text).toContain("Needs review: 3 need confirmation");
-  });
+    it("omits review line when count is zero", () => {
+        const text = formatTotalsMessage({
+            currency: "SGD",
+            period: "thisweek",
+            totals: {
+                totalMinor: 5000,
+                count: 2,
+                needsReviewCount: 0,
+            },
+        });
+
+        expect(text).toContain("This Week");
+        expect(text).toContain("SGD 50.00");
+        expect(text).toContain("2 expenses");
+        expect(text).not.toContain("review");
+    });
 });
