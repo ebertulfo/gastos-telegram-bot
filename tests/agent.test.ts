@@ -69,6 +69,31 @@ describe("buildSystemPrompt", () => {
         expect(prompt).toContain("all categories");
     });
 
+    it("includes response format templates", () => {
+        const prompt = buildSystemPrompt("UTC", "USD");
+        expect(prompt).toContain("RESPONSE FORMAT");
+        expect(prompt).toContain("Logged");
+        expect(prompt).toContain("Updated");
+        expect(prompt).toContain("Deleted");
+    });
+
+    it("includes tone rules", () => {
+        const prompt = buildSystemPrompt("UTC", "USD");
+        expect(prompt).toContain("TONE");
+        expect(prompt).toContain("em dash");
+    });
+
+    it("includes rule against showing expense IDs", () => {
+        const prompt = buildSystemPrompt("UTC", "USD");
+        expect(prompt).toContain("Never show expense IDs");
+    });
+
+    it("includes rule against internal terminology", () => {
+        const prompt = buildSystemPrompt("UTC", "USD");
+        expect(prompt).toContain("Never say");
+        expect(prompt).toContain("from your report");
+    });
+
     it("includes today's date", () => {
         const prompt = buildSystemPrompt("UTC", "USD");
         // Should contain a formatted date string (year at minimum)
