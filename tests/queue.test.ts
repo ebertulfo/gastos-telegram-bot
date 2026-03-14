@@ -3,15 +3,31 @@ import { handleParseQueueBatch } from "../src/queue";
 import type { Env, ParseQueueMessage } from "../src/types";
 
 // Mock the SDK
-vi.mock("@openai/agents", () => ({
-  run: vi.fn().mockResolvedValue({
-    finalOutput: "Logged: PHP 150.00 | Food | lunch",
-    rawResponses: [{ usage: { totalTokens: 500 } }],
-  }),
-  setDefaultModelProvider: vi.fn(),
-  getGlobalTraceProvider: vi.fn(() => ({ forceFlush: vi.fn().mockResolvedValue(undefined) })),
-  addTraceProcessor: vi.fn(),
-}));
+vi.mock("@openai/agents", () => {
+  // Create a mock stream that yields events and has completed/finalOutput/rawResponses
+  function createMockStream() {
+    const events: any[] = [];
+    return {
+      [Symbol.asyncIterator]: async function* () {
+        for (const event of events) {
+          yield event;
+        }
+      },
+      completed: Promise.resolve(),
+      finalOutput: "Logged: PHP 150.00 | Food | lunch",
+      rawResponses: [{ usage: { totalTokens: 500 } }],
+    };
+  }
+
+  return {
+    run: vi.fn().mockImplementation(() => Promise.resolve(createMockStream())),
+    setDefaultModelProvider: vi.fn(),
+    getGlobalTraceProvider: vi.fn(() => ({
+      forceFlush: vi.fn().mockResolvedValue(undefined),
+    })),
+    addTraceProcessor: vi.fn(),
+  };
+});
 
 vi.mock("@openai/agents-openai", () => ({
   OpenAIProvider: vi.fn(),
@@ -32,6 +48,16 @@ vi.mock("../src/telegram/messages", () => ({
   sendTelegramChatMessage: vi.fn().mockResolvedValue(undefined),
   sendChatAction: vi.fn().mockResolvedValue(undefined),
   sendMessageDraft: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("../src/telegram/streaming", () => ({
+  StreamingReplyManager: vi.fn().mockImplementation(() => ({
+    started: false,
+    sendDraft: vi.fn().mockResolvedValue(undefined),
+    appendText: vi.fn().mockResolvedValue(undefined),
+    finalize: vi.fn().mockResolvedValue(undefined),
+  })),
+  getToolStatusText: vi.fn().mockReturnValue("Working on it..."),
 }));
 
 // Mock quotas
@@ -70,7 +96,6 @@ describe("queue processMessage via SDK agent", () => {
 
   it("processes a text message through the agent and acks", async () => {
     const { run } = await import("@openai/agents");
-    const { sendTelegramChatMessage } = await import("../src/telegram/messages");
 
     const ack = vi.fn();
     const retry = vi.fn();
@@ -98,11 +123,14 @@ describe("queue processMessage via SDK agent", () => {
     expect(run).toHaveBeenCalledWith(
       expect.objectContaining({ name: "gastos" }),
       "coffee 150",
-      expect.objectContaining({ maxTurns: 10 }),
+      expect.objectContaining({ maxTurns: 10, stream: true }),
     );
-    expect(sendTelegramChatMessage).toHaveBeenCalledWith(
-      env,
-      12345,
+
+    const { StreamingReplyManager } = await import("../src/telegram/streaming");
+    expect(StreamingReplyManager).toHaveBeenCalledWith(env, 12345);
+
+    const managerInstance = vi.mocked(StreamingReplyManager).mock.results[0].value;
+    expect(managerInstance.finalize).toHaveBeenCalledWith(
       "Logged: PHP 150.00 | Food | lunch",
     );
   });
@@ -203,7 +231,7 @@ describe("queue processMessage via SDK agent", () => {
     expect(run).toHaveBeenCalledWith(
       expect.objectContaining({ name: "gastos" }),
       "coffee 5 dollars",
-      expect.objectContaining({ maxTurns: 10 }),
+      expect.objectContaining({ maxTurns: 10, stream: true }),
     );
   });
 
@@ -244,7 +272,7 @@ describe("queue processMessage via SDK agent", () => {
           ]),
         }),
       ]),
-      expect.objectContaining({ maxTurns: 10 }),
+      expect.objectContaining({ maxTurns: 10, stream: true }),
     );
   });
 });

@@ -5,6 +5,7 @@ import { createGastosAgent } from "./ai/agent";
 import { D1Session } from "./ai/session";
 import { transcribeR2Audio } from "./ai/openai";
 import { sendTelegramChatMessage, sendChatAction } from "./telegram/messages";
+import { StreamingReplyManager, getToolStatusText } from "./telegram/streaming";
 import { checkAndRefreshTokenQuota, incrementTokenUsage } from "./db/quotas";
 import { createTracer } from "./tracer";
 import type { ITracer } from "./tracer";
@@ -122,13 +123,32 @@ async function processMessage(
   const agent = createGastosAgent(env, userId, telegramId, timezone, currency);
   const session = new D1Session(env.DB, userId);
 
-  // 6. Run the agent
+  // 6. Run the agent (streaming)
   let result;
+  const manager = new StreamingReplyManager(env, telegramId);
+
   const runAgent = async () => {
     try {
-      return await run(agent, agentInput, { session, maxTurns: 10 });
+      const stream = await run(agent, agentInput, { session, maxTurns: 10, stream: true });
+
+      for await (const event of stream) {
+        if (event.type === "run_item_stream_event" && event.name === "tool_called") {
+          const rawItem = (event.item as any).rawItem;
+          const toolName = rawItem?.name ?? "";
+          await manager.sendDraft(getToolStatusText(toolName));
+        }
+        if (event.type === "raw_model_stream_event" && event.data.type === "output_text_delta") {
+          if (!manager.started) {
+            await manager.sendDraft("...");
+          }
+          await manager.appendText(event.data.delta);
+        }
+      }
+
+      await stream.completed;
+      return stream;
     } catch (err: unknown) {
-      // Check if error has .state for resumption
+      // Error resumption falls back to non-streaming run() — no double-complexity on retry
       if (err && typeof err === "object" && "state" in err && err.state) {
         try {
           return await run(agent, err.state as any);
@@ -137,11 +157,13 @@ async function processMessage(
           return null;
         }
       } else {
-        throw err; // Re-throw to trigger message.retry()
+        throw err;
       }
     }
   };
 
+  // IMPORTANT: Preserve agentTraceProcessor context — this wraps the span so
+  // ai.turn and ai.tool sub-spans from AgentTraceProcessor are attributed correctly
   agentTraceProcessor.setContext(traceId, userId, tracer);
   try {
     result = await tracer.span(traceId, "ai.semantic_chat", userId, runAgent, { model: "gpt-5-mini" });
@@ -153,7 +175,7 @@ async function processMessage(
 
   // 7. Increment token quota from actual usage
   const totalTokens = result.rawResponses.reduce(
-    (sum, r) => sum + (r.usage?.totalTokens ?? 0),
+    (sum: number, r: any) => sum + (r.usage?.totalTokens ?? 0),
     0,
   );
   if (totalTokens > 0) {
@@ -162,10 +184,10 @@ async function processMessage(
     });
   }
 
-  // 8. Send result to Telegram
-  const reply = result.finalOutput || "I couldn't process that. Please try again.";
+  // 8. Finalize streaming reply (replaces old sendTelegramChatMessage step)
+  const reply = result.finalOutput || "";
   await tracer.span(traceId, "telegram.send_reply", userId, async () => {
-    await sendTelegramChatMessage(env, telegramId, reply);
+    await manager.finalize(reply);
   });
 
   // 9. Flush traces in background
