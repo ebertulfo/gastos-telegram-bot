@@ -105,7 +105,7 @@ export function createAgentTools(env: Env, userId: number, telegramId: number, t
                 console.error("[TOOL:log_expense] Vectorize indexing failed (non-fatal):", e);
             }
 
-            return `Logged ${input.currency} ${input.amount.toFixed(2)} for "${input.description}" under ${input.category}. (ID #${expenseId})`;
+            return `Logged ${input.currency} ${input.amount.toFixed(2)} \u2014 ${input.description} (${input.category}). ID #${expenseId}`;
         },
     });
 
@@ -138,8 +138,8 @@ export function createAgentTools(env: Env, userId: number, telegramId: number, t
 
             await updateExpense(env.DB, input.expense_id, userId, updates);
 
-            const changes = Object.keys(updates).join(", ");
-            return `Updated expense #${input.expense_id} (changed: ${changes || "nothing"}).`;
+            const changes = Object.keys(updates).map(k => k.replace("_minor", "").replace("_utc", "")).join(", ");
+            return `Updated expense #${input.expense_id} \u2014 changed: ${changes || "nothing"}`;
         },
     });
 
@@ -151,7 +151,7 @@ export function createAgentTools(env: Env, userId: number, telegramId: number, t
         }),
         execute: async (input) => {
             await deleteExpense(env.DB, input.expense_id, userId);
-            return `Deleted expense #${input.expense_id}.`;
+            return `Deleted expense #${input.expense_id}`;
         },
     });
 

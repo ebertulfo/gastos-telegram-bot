@@ -359,6 +359,38 @@ describe("createAgentTools", () => {
     expect(result).toMatch(/[A-Z][a-z]{2} \d{1,2}/);
   });
 
+  it("log_expense returns em-dash separated confirmation", async () => {
+    const { insertExpense } = await import("../src/db/expenses");
+    vi.mocked(insertExpense).mockResolvedValueOnce(99);
+
+    const tools = createAgentTools(createMockEnv(), userId, 12345, timezone, currency);
+    const logTool = tools[0] as any;
+    const result = await logTool.execute({
+      amount: 12.5,
+      currency: "PHP",
+      description: "Lunch",
+      category: "Food",
+      tags: [],
+    });
+    expect(result).toContain("\u2014");
+    expect(result).not.toContain('for "');
+    expect(result).not.toContain("under");
+  });
+
+  it("edit_expense returns descriptive change confirmation", async () => {
+    const tools = createAgentTools(createMockEnv(), userId, 12345, timezone, currency);
+    const editTool = tools[1] as any;
+    const result = await editTool.execute({
+      expense_id: 7,
+      amount: 37.8,
+      category: null,
+      description: null,
+      occurred_at: null,
+    });
+    expect(result).toContain("#7");
+    expect(result).toContain("amount");
+  });
+
   it("log_expense defaults to now when occurred_at is not provided", async () => {
     const { insertExpense } = await import("../src/db/expenses");
     vi.mocked(insertExpense).mockResolvedValueOnce(51);
