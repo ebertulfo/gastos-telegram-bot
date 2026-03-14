@@ -123,7 +123,7 @@ describe("StreamingReplyManager", () => {
     expect(sendTelegramChatMessage).toHaveBeenCalledWith(
       expect.anything(),
       12345,
-      "I couldn't process that. Please try again.",
+      "Something went wrong — try again",
     );
   });
 

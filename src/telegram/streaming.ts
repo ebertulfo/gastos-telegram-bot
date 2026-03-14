@@ -3,7 +3,7 @@ import type { Env } from "../types";
 
 const THROTTLE_MS = 1000;
 const MAX_MESSAGE_LENGTH = 4096;
-const FALLBACK_TEXT = "I couldn't process that. Please try again.";
+const FALLBACK_TEXT = "Something went wrong — try again";
 
 const TOOL_STATUS_MAP: Record<string, string> = {
   log_expense: "Logging your expense...",

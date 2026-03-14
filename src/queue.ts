@@ -63,7 +63,7 @@ async function processMessage(
     await sendTelegramChatMessage(
       env,
       telegramId,
-      "You've reached your daily usage limit. Try again tomorrow!",
+      "You've hit your daily limit — try again tomorrow",
     );
     return;
   }
@@ -86,7 +86,7 @@ async function processMessage(
       return transcribeR2Audio(env, body.r2ObjectKey!);
     });
     if (!transcript) {
-      await sendTelegramChatMessage(env, telegramId, "Could not transcribe your voice message. Please try again.");
+      await sendTelegramChatMessage(env, telegramId, "Couldn't transcribe that voice message — try sending it again");
       return;
     }
     agentInput = transcript;
@@ -97,7 +97,7 @@ async function processMessage(
       return env.MEDIA_BUCKET.get(body.r2ObjectKey!);
     }, { r2Key: body.r2ObjectKey });
     if (!object) {
-      await sendTelegramChatMessage(env, telegramId, "Could not retrieve the image. Please try again.");
+      await sendTelegramChatMessage(env, telegramId, "Couldn't load that image — try sending it again");
       return;
     }
     const bytes = new Uint8Array(await object.arrayBuffer());
@@ -154,7 +154,7 @@ async function processMessage(
         try {
           return await run(agent, err.state as any);
         } catch {
-          await sendTelegramChatMessage(env, telegramId, "Something went wrong, please try again.");
+          await sendTelegramChatMessage(env, telegramId, "Something went wrong — try again");
           return null;
         }
       } else {
