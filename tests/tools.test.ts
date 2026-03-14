@@ -299,6 +299,66 @@ describe("createAgentTools", () => {
     expect(occurredAtUtc).toContain(yesterdayStr);
   });
 
+  it("get_financial_report uses human-readable period labels", async () => {
+    const { getExpenses } = await import("../src/db/expenses");
+    vi.mocked(getExpenses).mockResolvedValueOnce([
+      {
+        id: 80,
+        source_event_id: 101,
+        amount_minor: 500,
+        currency: "SGD",
+        occurred_at_utc: "2026-03-14T04:00:00Z",
+        status: "final",
+        category: "Food",
+        tags: "[]",
+        text_raw: null,
+        r2_object_key: null,
+        needs_review_reason: false,
+        parsed_description: "Coffee",
+      },
+    ]);
+
+    const tools = createAgentTools(createMockEnv(), userId, 12345, timezone, currency);
+    const reportTool = tools[3] as any;
+    const result = await reportTool.execute({
+      period: "thismonth",
+      category: null,
+      tag_query: null,
+    });
+    expect(result).toContain("This Month");
+    expect(result).not.toContain("thismonth");
+  });
+
+  it("get_financial_report formats dates as readable strings", async () => {
+    const { getExpenses } = await import("../src/db/expenses");
+    vi.mocked(getExpenses).mockResolvedValueOnce([
+      {
+        id: 81,
+        source_event_id: 102,
+        amount_minor: 1800,
+        currency: "SGD",
+        occurred_at_utc: "2026-03-14T04:00:00Z",
+        status: "final",
+        category: "Food",
+        tags: "[]",
+        text_raw: null,
+        r2_object_key: null,
+        needs_review_reason: false,
+        parsed_description: "Lunch",
+      },
+    ]);
+
+    const tools = createAgentTools(createMockEnv(), userId, 12345, timezone, currency);
+    const reportTool = tools[3] as any;
+    const result = await reportTool.execute({
+      period: "today",
+      category: null,
+      tag_query: null,
+    });
+    expect(result).not.toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+    expect(result).toMatch(/[A-Z][a-z]{2} \d{1,2}/);
+  });
+
   it("log_expense defaults to now when occurred_at is not provided", async () => {
     const { insertExpense } = await import("../src/db/expenses");
     vi.mocked(insertExpense).mockResolvedValueOnce(51);

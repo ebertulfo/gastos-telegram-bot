@@ -17,6 +17,22 @@ import { searchExpensesBySemantic, generateEmbedding } from "./openai";
 const CATEGORIES = ["Food", "Transport", "Housing", "Shopping", "Entertainment", "Health", "Other"] as const;
 const PERIODS = ["today", "yesterday", "thisweek", "lastweek", "thismonth", "lastmonth", "thisyear", "lastyear"] as const;
 
+const PERIOD_LABELS: Record<string, string> = {
+    today: "Today",
+    yesterday: "Yesterday",
+    thisweek: "This Week",
+    lastweek: "Last Week",
+    thismonth: "This Month",
+    lastmonth: "Last Month",
+    thisyear: "This Year",
+    lastyear: "Last Year",
+};
+
+function formatShortDate(isoString: string): string {
+    const date = new Date(isoString);
+    return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
 /**
  * Validates occurred_at dates from LLM tool calls.
  * Rejects dates >30 days in the past or any future date (likely hallucinated).
@@ -256,10 +272,11 @@ async function executeGetFinancialReportInternal(
 
     if (expenses.length === 0) {
         const activePeriod = expandedToPrevious ? previousPeriodLabel : period;
+        const displayPeriod = PERIOD_LABELS[activePeriod] ?? activePeriod;
         if (tagQuery) {
-            return `No expenses matched "${tagQuery}" for period "${activePeriod}" (checked both literal tags and semantic search). The user may not have logged any matching expenses.`;
+            return `No expenses matched "${tagQuery}" for ${displayPeriod} (checked both literal tags and semantic search). The user may not have logged any matching expenses.`;
         }
-        return `No expenses found for period "${activePeriod}". The user may not have logged any expenses in this time range.`;
+        return `No expenses found for ${displayPeriod}. The user may not have logged any expenses in this time range.`;
     }
 
     // --- 1. Total ---
@@ -301,16 +318,17 @@ async function executeGetFinancialReportInternal(
                 tags = ` [${parsed.join(", ")}]`;
             }
         } catch { /* ignore */ }
-        return `- #${e.id} ${e.occurred_at_utc}: ${e.currency} ${major} | ${e.category} | ${desc}${tags}`;
+        return `- #${e.id} ${formatShortDate(e.occurred_at_utc)}: ${e.currency} ${major} | ${e.category} | ${desc}${tags}`;
     });
 
     // --- Assemble payload ---
+    const displayPeriod = PERIOD_LABELS[expandedToPrevious ? previousPeriodLabel : period] ?? period;
     const periodNote = expandedToPrevious
-        ? `NOTE: No data existed for "${period}" (it just started). Showing data from "${previousPeriodLabel}" instead.`
+        ? `NOTE: No data existed for ${PERIOD_LABELS[period] ?? period} (it just started). Showing data from ${displayPeriod} instead.`
         : "";
     const sections: string[] = [
         periodNote,
-        `Period: ${expandedToPrevious ? previousPeriodLabel : period}. Total: ${currencyLabel} ${totalMajor} (${expenses.length} expenses).`,
+        `Period: ${displayPeriod}. Total: ${currencyLabel} ${totalMajor} (${expenses.length} expenses).`,
     ].filter(Boolean);
 
     if (!category && !tagQuery) {
