@@ -31,6 +31,7 @@ vi.mock("../src/ai/session", () => ({
 vi.mock("../src/telegram/messages", () => ({
   sendTelegramChatMessage: vi.fn().mockResolvedValue(undefined),
   sendChatAction: vi.fn().mockResolvedValue(undefined),
+  sendMessageDraft: vi.fn().mockResolvedValue(undefined),
 }));
 
 // Mock quotas

@@ -136,3 +136,25 @@ export async function sendChatAction(env: Env, chatId: number, action: "typing" 
     console.error(`Telegram sendChatAction failed with status ${response.status}`);
   }
 }
+
+export async function sendMessageDraft(
+  env: Env,
+  chatId: number,
+  draftId: number,
+  text: string,
+): Promise<void> {
+  const response = await fetch(
+    `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessageDraft`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, draft_id: draftId, text }),
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      `Telegram sendMessageDraft failed with status ${response.status}`,
+    );
+  }
+}
