@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { Env } from "../types";
 import { insertExpense, updateExpense, deleteExpense, getExpenses } from "../db/expenses";
 import { createAgentSourceEvent } from "../db/source-events";
-import { parseTotalsPeriod } from "../totals";
+import { parseTotalsPeriod, periodLabel, type TotalsPeriod } from "../totals";
 import { searchExpensesBySemantic, generateEmbedding } from "./openai";
 
 // ------------------------------------------------------------------------------------------------
@@ -16,17 +16,6 @@ import { searchExpensesBySemantic, generateEmbedding } from "./openai";
 
 const CATEGORIES = ["Food", "Transport", "Housing", "Shopping", "Entertainment", "Health", "Other"] as const;
 const PERIODS = ["today", "yesterday", "thisweek", "lastweek", "thismonth", "lastmonth", "thisyear", "lastyear"] as const;
-
-const PERIOD_LABELS: Record<string, string> = {
-    today: "Today",
-    yesterday: "Yesterday",
-    thisweek: "This Week",
-    lastweek: "Last Week",
-    thismonth: "This Month",
-    lastmonth: "Last Month",
-    thisyear: "This Year",
-    lastyear: "Last Year",
-};
 
 function formatShortDate(isoString: string): string {
     const date = new Date(isoString);
@@ -272,7 +261,7 @@ async function executeGetFinancialReportInternal(
 
     if (expenses.length === 0) {
         const activePeriod = expandedToPrevious ? previousPeriodLabel : period;
-        const displayPeriod = PERIOD_LABELS[activePeriod] ?? activePeriod;
+        const displayPeriod = periodLabel(activePeriod as TotalsPeriod);
         if (tagQuery) {
             return `No expenses matched "${tagQuery}" for ${displayPeriod} (checked both literal tags and semantic search). The user may not have logged any matching expenses.`;
         }
@@ -322,13 +311,13 @@ async function executeGetFinancialReportInternal(
     });
 
     // --- Assemble payload ---
-    const displayPeriod = PERIOD_LABELS[expandedToPrevious ? previousPeriodLabel : period] ?? period;
+    const activePeriodLabel = periodLabel((expandedToPrevious ? previousPeriodLabel : period) as TotalsPeriod);
     const periodNote = expandedToPrevious
-        ? `NOTE: No data existed for ${PERIOD_LABELS[period] ?? period} (it just started). Showing data from ${displayPeriod} instead.`
+        ? `NOTE: No data existed for ${periodLabel(period as TotalsPeriod)} (it just started). Showing data from ${activePeriodLabel} instead.`
         : "";
     const sections: string[] = [
         periodNote,
-        `Period: ${displayPeriod}. Total: ${currencyLabel} ${totalMajor} (${expenses.length} expenses).`,
+        `Period: ${activePeriodLabel}. Total: ${currencyLabel} ${totalMajor} (${expenses.length} expenses).`,
     ].filter(Boolean);
 
     if (!category && !tagQuery) {

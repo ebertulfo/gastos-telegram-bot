@@ -145,7 +145,7 @@ export function getPeriodUtcRange(now: Date, timezone: string, period: TotalsPer
   return { startUtc, endUtc };
 }
 
-function periodLabel(period: TotalsPeriod): string {
+export function periodLabel(period: TotalsPeriod): string {
   const labels: Record<TotalsPeriod, string> = {
     today: "Today",
     yesterday: "Yesterday",

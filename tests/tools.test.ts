@@ -19,9 +19,13 @@ vi.mock("../src/db/expenses", () => ({
   getExpenses: vi.fn().mockResolvedValue([]),
 }));
 
-vi.mock("../src/totals", () => ({
-  parseTotalsPeriod: vi.fn().mockReturnValue("thismonth"),
-}));
+vi.mock("../src/totals", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/totals")>();
+  return {
+    ...actual,
+    parseTotalsPeriod: vi.fn().mockReturnValue("thismonth"),
+  };
+});
 
 vi.mock("../src/db/source-events", () => ({
   createAgentSourceEvent: vi.fn().mockResolvedValue(999),

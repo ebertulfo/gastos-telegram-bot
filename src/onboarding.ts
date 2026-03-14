@@ -161,8 +161,6 @@ async function sendCurrencyRetry(env: Env, chatId: number) {
   );
 }
 
-
-
 async function sendOnboardingComplete(env: Env, chatId: number, timezone: string, currency: string) {
   await sendTelegramChatMessage(
     env,
