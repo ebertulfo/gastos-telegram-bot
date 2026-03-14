@@ -68,7 +68,7 @@ async function processMessage(
   }
 
   // 2. Configure OpenAI SDK with API key from Workers env (no process.env on Workers)
-  setDefaultModelProvider(new OpenAIProvider({ apiKey: env.OPENAI_API_KEY }));
+  setDefaultModelProvider(new OpenAIProvider({ apiKey: env.OPENAI_API_KEY, useResponses: false }));
 
   // 3. Send typing indicator
   await tracer.span(traceId, "queue.typing_indicator", userId, async () => {
