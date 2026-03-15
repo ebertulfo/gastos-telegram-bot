@@ -45,5 +45,11 @@ export async function validateTelegramInitData(initData: string, botToken: strin
         return null;
     }
 
+    // Check auth_date freshness — reject tokens older than 24 hours
+    const authDate = urlParams.get("auth_date");
+    if (!authDate || Date.now() / 1000 - parseInt(authDate, 10) > 86400) {
+        return null;
+    }
+
     return Object.fromEntries(urlParams.entries());
 }

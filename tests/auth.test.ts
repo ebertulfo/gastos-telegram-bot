@@ -14,16 +14,9 @@ describe("validateTelegramInitData", () => {
     });
 
     it("validates correct signature using Web Crypto API", async () => {
-        // This is a synthetically generated valid combination based on the algorithm
-        // bot_token: "test_token"
-        // payload: "auth_date=1&query_id=A&user=B"
-        // secret_key = HMAC_SHA256("WebAppData", "test_token")
-        // hash = HEX(HMAC_SHA256(secret_key, "auth_date=1\nquery_id=A\nuser=B"))
-
-        // Test values:
         const botToken = "test_token";
+        const freshAuthDate = Math.floor(Date.now() / 1000) - 60;
 
-        // We manually compute the expected hash for this test to avoid circular logic
         const encoder = new TextEncoder();
         const botTokenKey = await crypto.subtle.importKey(
             "raw",
@@ -41,20 +34,88 @@ describe("validateTelegramInitData", () => {
             ["sign"]
         );
 
-        const dataCheckString = "auth_date=1\nquery_id=A\nuser=B";
+        const dataCheckString = `auth_date=${freshAuthDate}\nquery_id=A\nuser=B`;
         const signatureBuffer = await crypto.subtle.sign("HMAC", finalKey, encoder.encode(dataCheckString));
         const expectedHash = Array.from(new Uint8Array(signatureBuffer))
             .map((b) => b.toString(16).padStart(2, "0"))
             .join("");
 
-        // Create the incoming initData string
-        const initData = `query_id=A&user=B&auth_date=1&hash=${expectedHash}`;
+        const initData = `query_id=A&user=B&auth_date=${freshAuthDate}&hash=${expectedHash}`;
 
         const result = await validateTelegramInitData(initData, botToken);
 
         expect(result).not.toBeNull();
         expect(result?.query_id).toBe("A");
         expect(result?.user).toBe("B");
-        expect(result?.auth_date).toBe("1");
+        expect(result?.auth_date).toBe(String(freshAuthDate));
+    });
+
+    it("rejects expired auth_date (>24h old)", async () => {
+        const botToken = "test_token";
+        const expiredAuthDate = Math.floor(Date.now() / 1000) - 48 * 3600;
+
+        const encoder = new TextEncoder();
+        const botTokenKey = await crypto.subtle.importKey(
+            "raw",
+            encoder.encode("WebAppData"),
+            { name: "HMAC", hash: "SHA-256" },
+            false,
+            ["sign"]
+        );
+        const secretKeyBuffer = await crypto.subtle.sign("HMAC", botTokenKey, encoder.encode(botToken));
+        const finalKey = await crypto.subtle.importKey(
+            "raw",
+            secretKeyBuffer,
+            { name: "HMAC", hash: "SHA-256" },
+            false,
+            ["sign"]
+        );
+
+        const dataCheckString = `auth_date=${expiredAuthDate}\nquery_id=A\nuser=B`;
+        const signatureBuffer = await crypto.subtle.sign("HMAC", finalKey, encoder.encode(dataCheckString));
+        const hash = Array.from(new Uint8Array(signatureBuffer))
+            .map((b) => b.toString(16).padStart(2, "0"))
+            .join("");
+
+        const initData = `query_id=A&user=B&auth_date=${expiredAuthDate}&hash=${hash}`;
+
+        const result = await validateTelegramInitData(initData, botToken);
+
+        expect(result).toBeNull();
+    });
+
+    it("accepts fresh auth_date (<24h old)", async () => {
+        const botToken = "test_token";
+        const freshAuthDate = Math.floor(Date.now() / 1000) - 3600;
+
+        const encoder = new TextEncoder();
+        const botTokenKey = await crypto.subtle.importKey(
+            "raw",
+            encoder.encode("WebAppData"),
+            { name: "HMAC", hash: "SHA-256" },
+            false,
+            ["sign"]
+        );
+        const secretKeyBuffer = await crypto.subtle.sign("HMAC", botTokenKey, encoder.encode(botToken));
+        const finalKey = await crypto.subtle.importKey(
+            "raw",
+            secretKeyBuffer,
+            { name: "HMAC", hash: "SHA-256" },
+            false,
+            ["sign"]
+        );
+
+        const dataCheckString = `auth_date=${freshAuthDate}\nquery_id=A\nuser=B`;
+        const signatureBuffer = await crypto.subtle.sign("HMAC", finalKey, encoder.encode(dataCheckString));
+        const hash = Array.from(new Uint8Array(signatureBuffer))
+            .map((b) => b.toString(16).padStart(2, "0"))
+            .join("");
+
+        const initData = `query_id=A&user=B&auth_date=${freshAuthDate}&hash=${hash}`;
+
+        const result = await validateTelegramInitData(initData, botToken);
+
+        expect(result).not.toBeNull();
+        expect(result?.auth_date).toBe(String(freshAuthDate));
     });
 });
