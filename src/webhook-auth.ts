@@ -1,8 +1,9 @@
+const encoder = new TextEncoder();
+
 export function verifyWebhookSecret(
   incomingHeader: string | undefined,
   expectedSecret: string
 ): boolean {
-  const encoder = new TextEncoder();
   const incoming = encoder.encode(incomingHeader ?? "");
   const expected = encoder.encode(expectedSecret);
 

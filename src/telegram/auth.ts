@@ -1,3 +1,5 @@
+const encoder = new TextEncoder();
+
 export async function validateTelegramInitData(initData: string, botToken: string): Promise<Record<string, string> | null> {
     const urlParams = new URLSearchParams(initData);
     const hash = urlParams.get("hash");
@@ -11,10 +13,6 @@ export async function validateTelegramInitData(initData: string, botToken: strin
     // Sort keys alphabetically
     const keys = Array.from(urlParams.keys()).sort();
     const dataCheckString = keys.map((key) => `${key}=${urlParams.get(key)}`).join("\n");
-
-    // Web Crypto API for HMAC-SHA-256
-    // 1. Create a secret key from the bot token using "WebAppData" as the key
-    const encoder = new TextEncoder();
 
     const botTokenKey = await crypto.subtle.importKey(
         "raw",

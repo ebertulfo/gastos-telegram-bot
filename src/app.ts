@@ -14,8 +14,9 @@ export function createApp() {
     "/api/*",
     cors({
       origin: (origin, c) => {
-        const allowed = (c.env as any).ALLOWED_ORIGINS?.split(",").map((s: string) => s.trim()).filter(Boolean) ?? [];
-        if ((c.env as any).APP_ENV === "development") {
+        const env = c.env as Env;
+        const allowed = env.ALLOWED_ORIGINS?.split(",").map((s) => s.trim()).filter(Boolean) ?? [];
+        if (env.APP_ENV === "development") {
           allowed.push("http://localhost:5173", "http://localhost:4173");
         }
         return allowed.includes(origin) ? origin : null;
