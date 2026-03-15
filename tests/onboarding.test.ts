@@ -92,7 +92,7 @@ function createOnboardingEnv(initialUser: UserRow | null) {
 function requestForText(text: string) {
   return new Request("http://localhost/webhook/telegram", {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", "X-Telegram-Bot-Api-Secret-Token": "test-webhook-secret" },
     body: JSON.stringify({
       update_id: 1,
       message: {

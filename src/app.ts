@@ -3,6 +3,7 @@ import { cors } from "hono/cors";
 import { buildOpenApiSpec } from "./openapi";
 import { handleTelegramWebhook } from "./routes/webhook";
 import { apiRouter } from "./routes/api";
+import { verifyWebhookSecret } from "./webhook-auth";
 import type { Env } from "./types";
 
 export function createApp() {
@@ -19,6 +20,16 @@ export function createApp() {
   );
 
   app.get("/health", (c) => c.json({ status: "ok", env: c.env.APP_ENV }));
+
+  // Webhook signature validation
+  app.use("/webhook/telegram", async (c, next) => {
+    const secret = c.req.header("X-Telegram-Bot-Api-Secret-Token");
+    if (!verifyWebhookSecret(secret, c.env.TELEGRAM_WEBHOOK_SECRET)) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    await next();
+  });
+
   app.post("/webhook/telegram", handleTelegramWebhook);
   app.route("/api", apiRouter);
 
