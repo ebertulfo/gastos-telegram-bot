@@ -21,6 +21,13 @@ describe("updateExpense", () => {
     await updateExpense(db, 42, 7, {});
     expect(prepare).not.toHaveBeenCalled();
   });
+
+  it("throws on invalid column names", async () => {
+    const { db } = mockDb();
+    await expect(
+      updateExpense(db, 42, 7, { "malicious_column; DROP TABLE expenses": "oops" })
+    ).rejects.toThrow("Invalid update column");
+  });
 });
 
 describe("deleteExpense", () => {

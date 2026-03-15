@@ -1,6 +1,10 @@
 import type { Env } from "../types";
 import { getPeriodUtcRange, type TotalsPeriod } from "../totals";
 
+const ALLOWED_UPDATE_COLUMNS = new Set([
+  "amount_minor", "currency", "category", "tags", "occurred_at_utc", "status"
+]);
+
 export type ExpenseWithDetails = {
     id: number;
     source_event_id: number;
@@ -61,6 +65,12 @@ export async function updateExpense(
 ): Promise<void> {
     const keys = Object.keys(updates);
     if (keys.length === 0) return;
+
+    for (const key of keys) {
+      if (!ALLOWED_UPDATE_COLUMNS.has(key)) {
+        throw new Error(`Invalid update column: ${key}`);
+      }
+    }
 
     const setClauses = keys.map((k) => `${k} = ?`);
     const bindings = [...keys.map((k) => updates[k]), expenseId, userId];
