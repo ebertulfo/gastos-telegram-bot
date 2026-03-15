@@ -6,6 +6,7 @@ declare module "cloudflare:test" {
   interface ProvidedEnv {
     DB: D1Database;
     APP_ENV: string;
+    DEBUG_SECRET: string;
   }
 }
 
@@ -40,13 +41,13 @@ describe("debug trace endpoints", () => {
   });
 
   function makeEnv() {
-    return { ...env, APP_ENV: "development" } as any;
+    return { ...env, APP_ENV: "development", DEBUG_SECRET: "test-debug-secret" } as any;
   }
 
   describe("GET /debug/traces/:traceId", () => {
     it("returns all spans for a trace ordered by time", async () => {
       const res = await app.fetch(
-        new Request("http://localhost/debug/traces/trace-aaa"),
+        new Request("http://localhost/debug/traces/trace-aaa?secret=test-debug-secret"),
         makeEnv(),
       );
       expect(res.status).toBe(200);
@@ -60,7 +61,7 @@ describe("debug trace endpoints", () => {
 
     it("returns empty spans for unknown trace", async () => {
       const res = await app.fetch(
-        new Request("http://localhost/debug/traces/trace-zzz"),
+        new Request("http://localhost/debug/traces/trace-zzz?secret=test-debug-secret"),
         makeEnv(),
       );
       const body = await res.json() as any;
@@ -71,7 +72,7 @@ describe("debug trace endpoints", () => {
   describe("GET /debug/traces/summary", () => {
     it("returns aggregated latency stats per span name", async () => {
       const res = await app.fetch(
-        new Request("http://localhost/debug/traces/summary"),
+        new Request("http://localhost/debug/traces/summary?secret=test-debug-secret"),
         makeEnv(),
       );
       expect(res.status).toBe(200);
@@ -90,7 +91,7 @@ describe("debug trace endpoints", () => {
   describe("GET /debug/traces/recent", () => {
     it("returns recent traces grouped by trace_id", async () => {
       const res = await app.fetch(
-        new Request("http://localhost/debug/traces/recent"),
+        new Request("http://localhost/debug/traces/recent?secret=test-debug-secret"),
         makeEnv(),
       );
       expect(res.status).toBe(200);

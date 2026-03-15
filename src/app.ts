@@ -50,6 +50,9 @@ export function createApp() {
     if (c.env.APP_ENV !== "development") {
       return c.json({ error: "Not found" }, 404);
     }
+    if (!c.env.DEBUG_SECRET || c.req.query("secret") !== c.env.DEBUG_SECRET) {
+      return c.json({ error: "Not found" }, 404);
+    }
     await next();
   });
 
