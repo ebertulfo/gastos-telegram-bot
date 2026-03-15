@@ -25,6 +25,12 @@ export function createApp() {
     })
   );
 
+  app.use("/api/*", async (c, next) => {
+    await next();
+    c.header("X-Content-Type-Options", "nosniff");
+    c.header("X-Frame-Options", "DENY");
+  });
+
   app.get("/health", (c) => c.json({ status: "ok", env: c.env.APP_ENV }));
 
   // Webhook signature validation
