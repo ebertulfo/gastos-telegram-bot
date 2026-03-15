@@ -3,6 +3,7 @@ import { validateTelegramInitData } from "../telegram/auth";
 import { getExpenses, updateExpense, deleteExpense, getUserTags } from "../db/expenses";
 import { parseTotalsPeriod } from "../totals";
 import { checkApiRateLimit } from "../rate-limiter";
+import { KNOWN_CURRENCIES } from "../onboarding";
 import type { Env } from "../types";
 
 // Extend Hono variables to include our authenticated user
@@ -116,6 +117,9 @@ apiRouter.put("/expenses/:id", async (c) => {
     }
     if (currency !== undefined && typeof currency !== "string") {
         return c.json({ error: "currency must be a string" }, 400);
+    }
+    if (currency !== undefined && !KNOWN_CURRENCIES.has(currency.toUpperCase())) {
+        return c.json({ error: "Unsupported currency code" }, 400);
     }
     if (category !== undefined && typeof category !== "string") {
         return c.json({ error: "category must be a string" }, 400);

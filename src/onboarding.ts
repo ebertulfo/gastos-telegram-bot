@@ -5,6 +5,7 @@ import type { Env, TelegramUpdate } from "./types";
 
 const PRIORITY_CURRENCIES = ["PHP", "SGD", "USD", "EUR"] as const;
 const ASEAN_CURRENCIES = ["BND", "KHR", "IDR", "LAK", "MYR", "MMK", "PHP", "SGD", "THB", "VND"] as const;
+export const KNOWN_CURRENCIES = new Set([...PRIORITY_CURRENCIES, ...ASEAN_CURRENCIES]);
 const CURRENCY_TO_DEFAULT_TIMEZONE: Record<string, string> = {
   PHP: "Asia/Manila",
   SGD: "Asia/Singapore",
