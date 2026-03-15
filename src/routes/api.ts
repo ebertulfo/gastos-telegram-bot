@@ -134,7 +134,7 @@ apiRouter.put("/expenses/:id", async (c) => {
 
     const updateData: Record<string, unknown> = {};
     if (amount_minor !== undefined) updateData.amount_minor = amount_minor;
-    if (currency !== undefined) updateData.currency = currency;
+    if (currency !== undefined) updateData.currency = currency.toUpperCase();
     if (category !== undefined) updateData.category = category;
     if (tags !== undefined) updateData.tags = JSON.stringify(tags);
     if (occurred_at_utc !== undefined) {
