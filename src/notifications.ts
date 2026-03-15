@@ -194,20 +194,16 @@ async function getAiInsight(env: Env, summaryText: string): Promise<string | nul
 
 function buildEmptyStateMessage(type: NotificationType, now: Date): string {
   const fact = getFactForDay(now);
-  const prefix =
+  const greeting =
     type === "morning" || type === "monthly" || type === "yearly"
-      ? "Good morning!"
-      : "Here's your evening update.";
+      ? "Good morning — nothing logged yet"
+      : "No expenses logged today";
 
   return [
-    type === "morning" || type === "monthly" || type === "yearly"
-      ? "Good morning! Nothing was logged."
-      : "Nothing was logged today.",
+    greeting,
     "",
-    `Fact: "${fact.text}"`,
-    `(${fact.source})`,
-    "",
-    "Don't forget to log — just send me anything!",
+    `"${fact.text}"`,
+    `— ${fact.source}`,
   ].join("\n");
 }
 

@@ -19,9 +19,13 @@ vi.mock("../src/db/expenses", () => ({
   getExpenses: vi.fn().mockResolvedValue([]),
 }));
 
-vi.mock("../src/totals", () => ({
-  parseTotalsPeriod: vi.fn().mockReturnValue("thismonth"),
-}));
+vi.mock("../src/totals", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/totals")>();
+  return {
+    ...actual,
+    parseTotalsPeriod: vi.fn().mockReturnValue("thismonth"),
+  };
+});
 
 vi.mock("../src/db/source-events", () => ({
   createAgentSourceEvent: vi.fn().mockResolvedValue(999),
@@ -297,6 +301,98 @@ describe("createAgentTools", () => {
     const calls = vi.mocked(insertExpense).mock.calls;
     const occurredAtUtc = calls[calls.length - 1][7] as string;
     expect(occurredAtUtc).toContain(yesterdayStr);
+  });
+
+  it("get_financial_report uses human-readable period labels", async () => {
+    const { getExpenses } = await import("../src/db/expenses");
+    vi.mocked(getExpenses).mockResolvedValueOnce([
+      {
+        id: 80,
+        source_event_id: 101,
+        amount_minor: 500,
+        currency: "SGD",
+        occurred_at_utc: "2026-03-14T04:00:00Z",
+        status: "final",
+        category: "Food",
+        tags: "[]",
+        text_raw: null,
+        r2_object_key: null,
+        needs_review_reason: false,
+        parsed_description: "Coffee",
+      },
+    ]);
+
+    const tools = createAgentTools(createMockEnv(), userId, 12345, timezone, currency);
+    const reportTool = tools[3] as any;
+    const result = await reportTool.execute({
+      period: "thismonth",
+      category: null,
+      tag_query: null,
+    });
+    expect(result).toContain("This Month");
+    expect(result).not.toContain("thismonth");
+  });
+
+  it("get_financial_report formats dates as readable strings", async () => {
+    const { getExpenses } = await import("../src/db/expenses");
+    vi.mocked(getExpenses).mockResolvedValueOnce([
+      {
+        id: 81,
+        source_event_id: 102,
+        amount_minor: 1800,
+        currency: "SGD",
+        occurred_at_utc: "2026-03-14T04:00:00Z",
+        status: "final",
+        category: "Food",
+        tags: "[]",
+        text_raw: null,
+        r2_object_key: null,
+        needs_review_reason: false,
+        parsed_description: "Lunch",
+      },
+    ]);
+
+    const tools = createAgentTools(createMockEnv(), userId, 12345, timezone, currency);
+    const reportTool = tools[3] as any;
+    const result = await reportTool.execute({
+      period: "today",
+      category: null,
+      tag_query: null,
+    });
+    expect(result).not.toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+    expect(result).toMatch(/[A-Z][a-z]{2} \d{1,2}/);
+  });
+
+  it("log_expense returns em-dash separated confirmation", async () => {
+    const { insertExpense } = await import("../src/db/expenses");
+    vi.mocked(insertExpense).mockResolvedValueOnce(99);
+
+    const tools = createAgentTools(createMockEnv(), userId, 12345, timezone, currency);
+    const logTool = tools[0] as any;
+    const result = await logTool.execute({
+      amount: 12.5,
+      currency: "PHP",
+      description: "Lunch",
+      category: "Food",
+      tags: [],
+    });
+    expect(result).toContain("\u2014");
+    expect(result).not.toContain('for "');
+    expect(result).not.toContain("under");
+  });
+
+  it("edit_expense returns descriptive change confirmation", async () => {
+    const tools = createAgentTools(createMockEnv(), userId, 12345, timezone, currency);
+    const editTool = tools[1] as any;
+    const result = await editTool.execute({
+      expense_id: 7,
+      amount: 37.8,
+      category: null,
+      description: null,
+      occurred_at: null,
+    });
+    expect(result).toContain("#7");
+    expect(result).toContain("amount");
   });
 
   it("log_expense defaults to now when occurred_at is not provided", async () => {

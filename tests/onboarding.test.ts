@@ -190,9 +190,9 @@ describe("onboarding and command handling", () => {
 
     const [, requestInit] = fetchMock.mock.calls[0];
     const body = JSON.parse(String(requestInit?.body ?? "{}")) as { text?: string };
-    expect(body.text).toContain("Total: SGD 1,234\\.56");
-    expect(body.text).toContain("Count: \\(18 expenses\\)");
-    expect(body.text).toContain("Needs review: 3 need confirmation");
+    expect(body.text).toContain("SGD 1,234\\.56");
+    expect(body.text).toContain("18 expenses");
+    expect(body.text).toContain("3 need review");
 
     fetchMock.mockRestore();
   });

@@ -66,12 +66,14 @@ export function formatTotalsMessage(input: {
 }): string {
   const formattedTotal = formatMinorAsMoney(input.totals.totalMinor);
   const label = periodLabel(input.period);
-  return [
-    `${label}`,
-    `Total: ${input.currency} ${formattedTotal}`,
-    `Count: (${input.totals.count} expenses)`,
-    `Needs review: ${input.totals.needsReviewCount} need confirmation`
-  ].join("\n");
+  const lines = [
+    `${label} — ${input.currency} ${formattedTotal}`,
+    `${input.totals.count} expenses`,
+  ];
+  if (input.totals.needsReviewCount > 0) {
+    lines.push(`${input.totals.needsReviewCount} need review`);
+  }
+  return lines.join("\n");
 }
 
 export function getPeriodUtcRange(now: Date, timezone: string, period: TotalsPeriod): { startUtc: Date; endUtc: Date } {
@@ -143,7 +145,7 @@ export function getPeriodUtcRange(now: Date, timezone: string, period: TotalsPer
   return { startUtc, endUtc };
 }
 
-function periodLabel(period: TotalsPeriod): string {
+export function periodLabel(period: TotalsPeriod): string {
   const labels: Record<TotalsPeriod, string> = {
     today: "Today",
     yesterday: "Yesterday",

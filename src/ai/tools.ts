@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { Env } from "../types";
 import { insertExpense, updateExpense, deleteExpense, getExpenses } from "../db/expenses";
 import { createAgentSourceEvent } from "../db/source-events";
-import { parseTotalsPeriod } from "../totals";
+import { parseTotalsPeriod, periodLabel, type TotalsPeriod } from "../totals";
 import { searchExpensesBySemantic, generateEmbedding } from "./openai";
 
 // ------------------------------------------------------------------------------------------------
@@ -16,6 +16,11 @@ import { searchExpensesBySemantic, generateEmbedding } from "./openai";
 
 const CATEGORIES = ["Food", "Transport", "Housing", "Shopping", "Entertainment", "Health", "Other"] as const;
 const PERIODS = ["today", "yesterday", "thisweek", "lastweek", "thismonth", "lastmonth", "thisyear", "lastyear"] as const;
+
+function formatShortDate(isoString: string): string {
+    const date = new Date(isoString);
+    return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
 
 /**
  * Validates occurred_at dates from LLM tool calls.
@@ -89,7 +94,7 @@ export function createAgentTools(env: Env, userId: number, telegramId: number, t
                 console.error("[TOOL:log_expense] Vectorize indexing failed (non-fatal):", e);
             }
 
-            return `Logged ${input.currency} ${input.amount.toFixed(2)} for "${input.description}" under ${input.category}. (ID #${expenseId})`;
+            return `Logged ${input.currency} ${input.amount.toFixed(2)} \u2014 ${input.description} (${input.category}). ID #${expenseId}`;
         },
     });
 
@@ -122,8 +127,8 @@ export function createAgentTools(env: Env, userId: number, telegramId: number, t
 
             await updateExpense(env.DB, input.expense_id, userId, updates);
 
-            const changes = Object.keys(updates).join(", ");
-            return `Updated expense #${input.expense_id} (changed: ${changes || "nothing"}).`;
+            const changes = Object.keys(updates).map(k => k.replace("_minor", "").replace("_utc", "")).join(", ");
+            return `Updated expense #${input.expense_id} \u2014 changed: ${changes || "nothing"}`;
         },
     });
 
@@ -135,7 +140,7 @@ export function createAgentTools(env: Env, userId: number, telegramId: number, t
         }),
         execute: async (input) => {
             await deleteExpense(env.DB, input.expense_id, userId);
-            return `Deleted expense #${input.expense_id}.`;
+            return `Deleted expense #${input.expense_id}`;
         },
     });
 
@@ -256,10 +261,11 @@ async function executeGetFinancialReportInternal(
 
     if (expenses.length === 0) {
         const activePeriod = expandedToPrevious ? previousPeriodLabel : period;
+        const displayPeriod = periodLabel(activePeriod as TotalsPeriod);
         if (tagQuery) {
-            return `No expenses matched "${tagQuery}" for period "${activePeriod}" (checked both literal tags and semantic search). The user may not have logged any matching expenses.`;
+            return `No expenses matched "${tagQuery}" for ${displayPeriod} (checked both literal tags and semantic search). The user may not have logged any matching expenses.`;
         }
-        return `No expenses found for period "${activePeriod}". The user may not have logged any expenses in this time range.`;
+        return `No expenses found for ${displayPeriod}. The user may not have logged any expenses in this time range.`;
     }
 
     // --- 1. Total ---
@@ -301,16 +307,17 @@ async function executeGetFinancialReportInternal(
                 tags = ` [${parsed.join(", ")}]`;
             }
         } catch { /* ignore */ }
-        return `- #${e.id} ${e.occurred_at_utc}: ${e.currency} ${major} | ${e.category} | ${desc}${tags}`;
+        return `- #${e.id} ${formatShortDate(e.occurred_at_utc)}: ${e.currency} ${major} | ${e.category} | ${desc}${tags}`;
     });
 
     // --- Assemble payload ---
+    const activePeriodLabel = periodLabel((expandedToPrevious ? previousPeriodLabel : period) as TotalsPeriod);
     const periodNote = expandedToPrevious
-        ? `NOTE: No data existed for "${period}" (it just started). Showing data from "${previousPeriodLabel}" instead.`
+        ? `NOTE: No data existed for ${periodLabel(period as TotalsPeriod)} (it just started). Showing data from ${activePeriodLabel} instead.`
         : "";
     const sections: string[] = [
         periodNote,
-        `Period: ${expandedToPrevious ? previousPeriodLabel : period}. Total: ${currencyLabel} ${totalMajor} (${expenses.length} expenses).`,
+        `Period: ${activePeriodLabel}. Total: ${currencyLabel} ${totalMajor} (${expenses.length} expenses).`,
     ].filter(Boolean);
 
     if (!category && !tagQuery) {

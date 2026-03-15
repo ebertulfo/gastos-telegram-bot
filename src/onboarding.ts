@@ -51,12 +51,12 @@ export async function handleOnboardingOrCommand(env: Env, update: TelegramUpdate
   const totalsPeriod = parseTotalsPeriod(text);
   if (totalsPeriod) {
     if (!user || user.onboarding_step !== "completed") {
-      await sendTelegramChatMessage(env, chatId, "Finish /start to enable totals.");
+      await sendTelegramChatMessage(env, chatId, "Set up first — send /start");
       return true;
     }
 
     if (!user.currency || !user.timezone) {
-      await sendTelegramChatMessage(env, chatId, "Finish /start to enable totals.");
+      await sendTelegramChatMessage(env, chatId, "Set up first — send /start");
       return true;
     }
 
@@ -132,10 +132,10 @@ async function sendCurrencyPrompt(env: Env, chatId: number) {
     env,
     chatId,
     [
-      "Welcome to Gastos.",
-      "Send your expenses as text, photo, or voice.",
+      "Welcome to Gastos — your expense tracker",
+      "Send expenses as text, photo, or voice",
       "",
-      "To start, choose your primary currency (ISO 4217)."
+      "First, pick your currency:",
     ].join("\n"),
     {
       inline_keyboard: [
@@ -152,7 +152,7 @@ async function sendCurrencyRetry(env: Env, chatId: number) {
   await sendTelegramChatMessage(
     env,
     chatId,
-    "Please select or type a 3-letter ISO currency code (example: PHP, SGD, USD, EUR).",
+    "Type a 3-letter currency code (e.g. PHP, SGD, USD, EUR) or pick one below:",
     {
       inline_keyboard: [
         PRIORITY_CURRENCIES.map(c => ({ text: c, callback_data: `cur:${c}` }))
@@ -161,13 +161,16 @@ async function sendCurrencyRetry(env: Env, chatId: number) {
   );
 }
 
-
-
 async function sendOnboardingComplete(env: Env, chatId: number, timezone: string, currency: string) {
   await sendTelegramChatMessage(
     env,
     chatId,
-    `Setup complete.\nTimezone: ${timezone}\nCurrency: ${currency}\n\nYou can now use /today, /thisweek, /thismonth, /thisyear.`
+    [
+      `All set — ${currency}, ${timezone}`,
+      "",
+      "Send me an expense to get started",
+      "Or use /today, /thisweek, /thismonth to check totals",
+    ].join("\n")
   );
 }
 

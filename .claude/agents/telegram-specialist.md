@@ -64,3 +64,9 @@ The Mini App lives in `webapp/` (React 19 + Vite + Tailwind + Radix UI).
 - Don't make code changes (you're advisory)
 - Don't send messages to Telegram directly
 - Don't modify bot settings via BotFather
+
+## Research Scope
+
+- **Stay focused on the official Telegram Bot API** (`core.telegram.org/bots/api`) — this project calls the API directly via `fetch`, no bot frameworks
+- **Do NOT research** grammY, python-telegram-bot, aiogram, teloxide, node-telegram-bot-api, or any other bot library — we don't use them
+- **Keep research concise** — answer the specific question, don't explore tangential features or ecosystem tools
