@@ -1,6 +1,7 @@
 import type { Env } from "./types";
 
 const MAX_CHAT_MESSAGES_PER_HOUR = 20;
+const MAX_API_REQUESTS_PER_HOUR = 100;
 
 /**
  * Checks if the user has exceeded their Chat API quota for the current hour.
@@ -26,4 +27,26 @@ export async function checkRateLimit(env: Env, telegramUserId: number): Promise<
     await env.RATE_LIMITER.put(key, (count + 1).toString(), { expirationTtl: 3600 });
 
     return true; // Allowed
+}
+
+/**
+ * Checks if the user has exceeded their API quota for the current hour.
+ * Uses Cloudflare KV with an automatic 1-hour expiration TTL per bucket.
+ *
+ * @returns true if the user is allowed to proceed, false if they are rate limited.
+ */
+export async function checkApiRateLimit(env: Env, userId: number): Promise<boolean> {
+    const now = new Date();
+    const hourBucket = `${now.getUTCFullYear()}-${now.getUTCMonth()}-${now.getUTCDate()}T${now.getUTCHours()}`;
+    const key = `ratelimit:api:${userId}:${hourBucket}`;
+
+    const currentCountStr = await env.RATE_LIMITER.get(key);
+    const count = currentCountStr ? parseInt(currentCountStr, 10) : 0;
+
+    if (count >= MAX_API_REQUESTS_PER_HOUR) {
+        return false;
+    }
+
+    await env.RATE_LIMITER.put(key, (count + 1).toString(), { expirationTtl: 3600 });
+    return true;
 }

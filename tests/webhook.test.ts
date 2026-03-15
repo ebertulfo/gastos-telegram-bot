@@ -4,7 +4,8 @@ import * as rateLimiter from "../src/rate-limiter";
 import type { Env } from "../src/types";
 
 vi.mock("../src/rate-limiter", () => ({
-  checkRateLimit: vi.fn()
+  checkRateLimit: vi.fn(),
+  checkApiRateLimit: vi.fn().mockResolvedValue(true)
 }));
 
 type MockDbOptions = {

@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { validateTelegramInitData } from "../telegram/auth";
 import { getExpenses, updateExpense, deleteExpense, getUserTags } from "../db/expenses";
 import { parseTotalsPeriod } from "../totals";
+import { checkApiRateLimit } from "../rate-limiter";
 import type { Env } from "../types";
 
 // Extend Hono variables to include our authenticated user
@@ -54,6 +55,15 @@ apiRouter.use("*", async (c, next) => {
     } catch (e) {
         return c.json({ error: "Failed to parse Telegram user data" }, 400);
     }
+});
+
+// Rate Limiting Middleware
+apiRouter.use("*", async (c, next) => {
+    const allowed = await checkApiRateLimit(c.env, c.get("userId"));
+    if (!allowed) {
+        return c.json({ error: "Too many requests. Please try again later." }, 429);
+    }
+    await next();
 });
 
 // Endpoints
