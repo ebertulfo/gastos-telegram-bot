@@ -55,10 +55,15 @@ async function processMessage(
     tracer.record(traceId, "queue.wait_time", userId, waitMs);
   }
 
-  // 1. Check quota
-  const allowed = await tracer.span(traceId, "queue.quota_check", userId, async () => {
-    return checkAndRefreshTokenQuota(env.DB, userId, telegramId, tier);
-  });
+  // 1. Check quota + send typing indicator in parallel (typing is best-effort)
+  const [allowed] = await Promise.all([
+    tracer.span(traceId, "queue.quota_check", userId, async () => {
+      return checkAndRefreshTokenQuota(env.DB, userId, telegramId, tier);
+    }),
+    tracer.span(traceId, "queue.typing_indicator", userId, async () => {
+      await sendChatAction(env, telegramId, "typing");
+    }),
+  ]);
   if (!allowed) {
     await sendTelegramChatMessage(
       env,
@@ -70,11 +75,6 @@ async function processMessage(
 
   // 2. Configure OpenAI SDK with API key from Workers env (no process.env on Workers)
   setDefaultModelProvider(new OpenAIProvider({ apiKey: env.OPENAI_API_KEY, useResponses: false }));
-
-  // 3. Send typing indicator
-  await tracer.span(traceId, "queue.typing_indicator", userId, async () => {
-    await sendChatAction(env, telegramId, "typing");
-  });
 
   // 4. Pre-process media into agent input
   let agentInput: string | AgentInputItem[];

@@ -24,6 +24,7 @@ queue = "gastos-parse-queue"
 
 [[queues.consumers]]
 queue = "gastos-parse-queue"
+max_batch_timeout = 0
 
 [[r2_buckets]]
 binding = "MEDIA_BUCKET"
