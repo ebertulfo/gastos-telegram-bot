@@ -6,7 +6,7 @@
 
 ## Context
 
-Gastos is preparing for public softlaunch. A comprehensive security audit identified 8 actionable vulnerabilities across authentication, authorization, input validation, and defense-in-depth. This spec covers all fixes needed to launch with a clean security posture.
+Gastos is preparing for public softlaunch. A comprehensive security audit identified 10 actionable vulnerabilities across authentication, authorization, input validation, and defense-in-depth. This spec covers all fixes needed to launch with a clean security posture.
 
 The app handles financial data (expense tracking) and will be open to any Telegram user, making security a non-negotiable prerequisite.
 
@@ -24,9 +24,20 @@ The app handles financial data (expense tracking) and will be open to any Telegr
 
 **Design:**
 - Add `TELEGRAM_WEBHOOK_SECRET` env var (new secret in `.dev.vars` and Cloudflare dashboard)
-- Add middleware on `/webhook/telegram` that validates `X-Telegram-Bot-Api-Secret-Token` header against `env.TELEGRAM_WEBHOOK_SECRET` using `crypto.subtle.timingSafeEqual()` for constant-time comparison
-- Return `401 Unauthorized` if the header is missing or doesn't match
+- Add middleware on `/webhook/telegram` that validates `X-Telegram-Bot-Api-Secret-Token` header against `env.TELEGRAM_WEBHOOK_SECRET`
+- Both strings must be encoded to `Uint8Array` via `TextEncoder` before comparison
+- If byte lengths differ, short-circuit to `401` immediately (don't call `timingSafeEqual` — it throws on length mismatch)
+- Use `crypto.subtle.timingSafeEqual()` only when byte lengths match, for constant-time comparison
+- Return `401 Unauthorized` if the header is missing, wrong length, or doesn't match
 - Re-register the webhook with Telegram's `setWebhook` API passing the `secret_token` parameter
+
+```typescript
+const encoder = new TextEncoder();
+const incoming = encoder.encode(c.req.header("X-Telegram-Bot-Api-Secret-Token") ?? "");
+const expected = encoder.encode(env.TELEGRAM_WEBHOOK_SECRET);
+if (incoming.byteLength !== expected.byteLength) return c.json({}, 401);
+if (!crypto.subtle.timingSafeEqual(incoming, expected)) return c.json({}, 401);
+```
 
 **Files:** `src/routes/webhook.ts`, `src/types.ts`, `.dev.vars`
 
@@ -40,7 +51,9 @@ The app handles financial data (expense tracking) and will be open to any Telegr
 - In development mode, `http://localhost:5173` is automatically included
 - Returns `null` (blocks request) for non-matching origins
 
-**Files:** `src/app.ts`, `src/types.ts`, `.dev.vars`
+**Note:** `ALLOWED_ORIGINS` is a non-secret config value (just domain names). It goes in `wrangler.toml` `[vars]` for production and `.dev.vars` for local dev. Unlike the other two new secrets, it does NOT need Cloudflare dashboard secrets.
+
+**Files:** `src/app.ts`, `src/types.ts`, `.dev.vars`, `wrangler.toml`
 
 ### Fix 3: API Rate Limiting (HIGH)
 
@@ -85,14 +98,15 @@ The app handles financial data (expense tracking) and will be open to any Telegr
 
 ### Fix 6: Currency Validation in API (MEDIUM)
 
-**Problem:** `PUT /expenses/:id` only validates `currency` is a string. Doesn't check against the `KNOWN_CURRENCIES` allowlist used elsewhere.
+**Problem:** `PUT /expenses/:id` only validates `currency` is a string. No allowlist validation against known currency codes.
 
 **Design:**
-- Import and reuse the existing `KNOWN_CURRENCIES` set
-- Add validation after the type check: reject if currency is not in the allowlist
+- **Create** a `KNOWN_CURRENCIES` Set — it does not currently exist in the codebase. Export it from `src/onboarding.ts` by combining the existing `PRIORITY_CURRENCIES` and `ASEAN_CURRENCIES` arrays into a single exported Set
+- Import `KNOWN_CURRENCIES` in `src/routes/api.ts`
+- Add validation after the type check: reject if `currency.toUpperCase()` is not in the allowlist
 - Return `400` with `"Unsupported currency code"` message
 
-**Files:** `src/routes/api.ts`
+**Files:** `src/onboarding.ts`, `src/routes/api.ts`
 
 ### Fix 7: Hono Version Upgrade (MEDIUM)
 
@@ -112,10 +126,42 @@ The app handles financial data (expense tracking) and will be open to any Telegr
 **Design:**
 - Add `DEBUG_SECRET` env var as a second factor
 - Debug endpoints require `?secret=<DEBUG_SECRET>` query parameter even in development mode
-- If either check fails, return `404` (don't reveal debug endpoints exist)
+- **Guard logic:** Both `APP_ENV === "development"` AND valid `DEBUG_SECRET` must be true. If `DEBUG_SECRET` is falsy/unset, deny unconditionally — treat unset secret as "debug disabled"
+- Return `404` on failure (don't reveal debug endpoints exist)
 - Add `DEBUG_SECRET` to `Env` type and `.dev.vars`
 
+```typescript
+app.use("/debug/*", async (c, next) => {
+  if (c.env.APP_ENV !== "development") return c.json({ error: "Not found" }, 404);
+  if (!c.env.DEBUG_SECRET || c.req.query("secret") !== c.env.DEBUG_SECRET) {
+    return c.json({ error: "Not found" }, 404);
+  }
+  await next();
+});
+```
+
 **Files:** `src/app.ts`, `src/types.ts`, `.dev.vars`
+
+### Fix 9: initData Expiration Check (HIGH)
+
+**Problem:** `validateTelegramInitData()` in `src/telegram/auth.ts` verifies the HMAC signature but never checks the `auth_date` field. A captured `initData` string is valid indefinitely, enabling replay attacks against all `/api/*` endpoints. For an app handling financial data, this is a significant gap.
+
+**Design:**
+- After signature validation succeeds, parse `auth_date` from the validated params
+- Reject if `auth_date` is more than 86400 seconds (24 hours) old: `Date.now() / 1000 - parseInt(authDate) > 86400`
+- Return `null` (same as signature failure) to trigger the existing `401` response in the API middleware
+
+**Files:** `src/telegram/auth.ts`
+
+### Fix 10: IDOR in DELETE Endpoint (MEDIUM)
+
+**Problem:** `DELETE /expenses/:id` in `src/routes/api.ts:174` queries `SELECT source_event_id FROM expenses WHERE id = ?` without a `user_id` filter. An authenticated user can probe any expense ID and learn its `source_event_id`. While `deleteExpense()` itself is safe (includes `AND user_id = ?`), the pre-query leaks cross-user data and the subsequent Vectorize cleanup could delete another user's vector.
+
+**Design:**
+- Add `AND user_id = ?` to the `SELECT source_event_id` query, binding the authenticated user's ID
+- This ensures both the lookup and the delete are scoped to the authenticated user
+
+**Files:** `src/routes/api.ts`
 
 ## New Environment Variables
 
@@ -134,8 +180,10 @@ The app handles financial data (expense tracking) and will be open to any Telegr
 
 ## Testing Strategy
 
-- Unit tests for webhook secret validation (valid, missing, wrong secret)
+- Unit tests for webhook secret validation (valid, missing, wrong secret, wrong length)
 - Unit tests for API rate limiting (under limit, at limit, over limit)
 - Unit tests for column whitelist (valid columns, invalid column throws)
+- Unit tests for initData expiration (fresh auth_date passes, stale auth_date rejected)
+- Unit tests for DELETE IDOR fix (ensure source_event_id query scoped to user)
 - Existing test suite as regression guard for all other changes
 - Manual verification: re-register webhook with secret_token, test Mini App CORS
