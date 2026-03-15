@@ -91,6 +91,7 @@ function createEnv(options: MockDbOptions = {}) {
   const env: Env = {
     APP_ENV: "test",
     TELEGRAM_BOT_TOKEN: "token",
+    TELEGRAM_WEBHOOK_SECRET: "test-webhook-secret",
     DB: dbState.db,
     MEDIA_BUCKET: { put } as unknown as R2Bucket,
     VECTORIZE: { upsert: vi.fn(), query: vi.fn(), deleteByIds: vi.fn() } as unknown as VectorizeIndex,

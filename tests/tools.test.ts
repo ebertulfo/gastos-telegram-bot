@@ -43,6 +43,7 @@ function createMockEnv(): Env {
   return {
     APP_ENV: "development",
     TELEGRAM_BOT_TOKEN: "test-token",
+    TELEGRAM_WEBHOOK_SECRET: "test-webhook-secret",
     OPENAI_API_KEY: "test-key",
     DB: {} as any,
     MEDIA_BUCKET: {} as any,

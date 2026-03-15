@@ -12,6 +12,7 @@ function createEnv(): Env {
   return {
     APP_ENV: "test",
     TELEGRAM_BOT_TOKEN: "token",
+    TELEGRAM_WEBHOOK_SECRET: "test-webhook-secret",
     OPENAI_API_KEY: "test-key",
     DB: {} as D1Database,
     MEDIA_BUCKET: {} as R2Bucket,

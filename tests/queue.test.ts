@@ -75,6 +75,7 @@ function createEnv(): Env {
   return {
     APP_ENV: "test",
     TELEGRAM_BOT_TOKEN: "token",
+    TELEGRAM_WEBHOOK_SECRET: "test-webhook-secret",
     OPENAI_API_KEY: "test-openai-key",
     DB: { prepare: vi.fn() } as unknown as D1Database,
     MEDIA_BUCKET: {

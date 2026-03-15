@@ -78,6 +78,7 @@ function createOnboardingEnv(initialUser: UserRow | null) {
   const env: Env = {
     APP_ENV: "test",
     TELEGRAM_BOT_TOKEN: "token",
+    TELEGRAM_WEBHOOK_SECRET: "test-webhook-secret",
     DB: { prepare } as unknown as D1Database,
     MEDIA_BUCKET: { put } as unknown as R2Bucket,
     VECTORIZE: {} as unknown as VectorizeIndex,

@@ -51,6 +51,9 @@ export type TelegramUpdate = {
 export type Env = {
   APP_ENV: string;
   TELEGRAM_BOT_TOKEN: string;
+  TELEGRAM_WEBHOOK_SECRET: string;
+  ALLOWED_ORIGINS?: string;
+  DEBUG_SECRET?: string;
   VECTORIZE: VectorizeIndex;
   RATE_LIMITER: KVNamespace;
   TRACES_KV?: KVNamespace;
