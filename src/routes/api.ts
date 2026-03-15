@@ -185,7 +185,7 @@ apiRouter.delete("/expenses/:id", async (c) => {
         return c.json({ error: "Invalid expense ID" }, 400);
     }
 
-    const expense = await c.env.DB.prepare(`SELECT source_event_id FROM expenses WHERE id = ?`).bind(expenseId).first<{ source_event_id: number }>();
+    const expense = await c.env.DB.prepare(`SELECT source_event_id FROM expenses WHERE id = ? AND user_id = ?`).bind(expenseId, c.get("userId")).first<{ source_event_id: number }>();
 
     await deleteExpense(c.env.DB, expenseId, c.get("userId"));
 
