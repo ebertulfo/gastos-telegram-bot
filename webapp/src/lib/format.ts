@@ -34,6 +34,13 @@ export function relativeTime(isoDate: string): string {
   return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
+function toLocalDateStr(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
 /**
  * Group expenses by date for section headers.
  * Returns: [{ label: "Today", expenses: [...] }, { label: "Yesterday", ... }]
@@ -42,23 +49,24 @@ export function groupByDate(
   expenses: { occurred_at_utc: string }[]
 ): { label: string; expenses: typeof expenses }[] {
   const now = new Date();
-  const todayStr = now.toISOString().slice(0, 10);
+  const todayStr = toLocalDateStr(now);
 
   const yesterday = new Date(now);
   yesterday.setDate(yesterday.getDate() - 1);
-  const yesterdayStr = yesterday.toISOString().slice(0, 10);
+  const yesterdayStr = toLocalDateStr(yesterday);
 
   const groups = new Map<string, typeof expenses>();
 
   for (const expense of expenses) {
-    const dateStr = expense.occurred_at_utc.slice(0, 10);
+    const expenseDate = new Date(expense.occurred_at_utc);
+    const dateStr = toLocalDateStr(expenseDate);
     let label: string;
     if (dateStr === todayStr) {
       label = "Today";
     } else if (dateStr === yesterdayStr) {
       label = "Yesterday";
     } else {
-      label = new Date(dateStr + "T00:00:00Z").toLocaleDateString("en-US", {
+      label = expenseDate.toLocaleDateString("en-US", {
         month: "short",
         day: "numeric",
       });

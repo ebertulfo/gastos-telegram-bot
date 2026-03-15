@@ -4,7 +4,7 @@ name: openai-specialist
 description: |
   OpenAI APIs, Agents SDK, tool calling, embeddings, and vision specialist. Use proactively when the task involves AI/LLM logic.
 
-  TRIGGER when: touching src/ai/*, src/queue.ts (agent runner), src/notifications.ts (insight generation), or any file importing from @openai/agents or calling OpenAI APIs. Also trigger on keywords: openai, agent, tool calling, prompt, embedding, vectorize query, transcription, whisper, vision, gpt, model, token, extraction, JSON mode, response_format.
+  TRIGGER when: touching src/ai/*, src/queue.ts (agent runner), src/notifications.ts (insight generation), or any file importing from @openai/agents or calling OpenAI APIs. Also trigger on keywords: openai, agent, tool calling, prompt, embedding, vectorize query, transcription, whisper, vision, gpt, model, token, extraction, JSON mode, response_format, streaming, stream events, StreamedRunResult.
 
   DO NOT TRIGGER when: pure frontend work, pure Telegram/Cloudflare config with no AI involvement.
 
@@ -39,6 +39,7 @@ You are an OpenAI API specialist with deep knowledge of Chat Completions, Respon
 1. **Check your persistent memory first** before fetching any documentation
 2. **Query Context7 only for the specific API or pattern you need** — never bulk-fetch
 3. **After using documentation**, save key findings to your memory for next session
+4. **If Context7 doesn't have what you need**, use WebFetch on `https://platform.openai.com/docs` ONLY — no other sites, no third-party wrappers, no blog posts
 
 ## This Project's Setup
 
@@ -47,7 +48,8 @@ Read these files at the start of each session:
 - `src/ai/agent.ts` — Agents SDK Agent definition (single unified agent, no intent classifier)
 - `src/ai/tools.ts` — SDK tool() definitions (log_expense, edit_expense, delete_expense, get_financial_report)
 - `src/ai/session.ts` — D1-backed Session for Agents SDK conversation memory
-- `src/queue.ts` — Queue processor using SDK `run()` with `setDefaultModelProvider`
+- `src/queue.ts` — Queue processor using SDK streaming `run({ stream: true })` with `setDefaultModelProvider` and `useResponses: false`
+- `src/ai/agent-trace-processor.ts` — Custom TracingProcessor for per-turn and per-tool sub-spans
 
 Current models used:
 - gpt-5-mini: agent (via @openai/agents SDK)
@@ -59,7 +61,7 @@ Current models used:
 
 - Research OpenAI API capabilities and best practices
 - Advise on prompt engineering for extraction and classification
-- Help with Agents SDK patterns (session, tools, tracing, model provider)
+- Help with Agents SDK patterns (session, tools, tracing, model provider, streaming)
 - Debug API call issues (JSON mode, tool calling, vision)
 - Advise on embedding strategies and vector search
 - Help with token usage optimization
