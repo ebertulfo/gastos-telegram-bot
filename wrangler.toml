@@ -32,6 +32,7 @@ bucket_name = "gastos-media"
 
 [vars]
 APP_ENV = "prod"
+ALLOWED_ORIGINS = ""
 OPENAI_TRANSCRIBE_MODEL = "whisper-1"
 OPENAI_VISION_MODEL = "gpt-4o-mini"
 

@@ -13,7 +13,13 @@ export function createApp() {
   app.use(
     "/api/*",
     cors({
-      origin: "*", // Or restrict to your Pages domain
+      origin: (origin, c) => {
+        const allowed = (c.env as any).ALLOWED_ORIGINS?.split(",").map((s: string) => s.trim()).filter(Boolean) ?? [];
+        if ((c.env as any).APP_ENV === "development") {
+          allowed.push("http://localhost:5173", "http://localhost:4173");
+        }
+        return allowed.includes(origin) ? origin : null;
+      },
       allowHeaders: ["Authorization", "Content-Type"],
       allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
     })
