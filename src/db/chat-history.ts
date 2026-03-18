@@ -53,6 +53,35 @@ export async function getRecentChatHistory(
     return results.results ?? [];
 }
 
+export type ChatMessageRow = {
+    id: number;
+    role: ChatRole;
+    content: string;
+    created_at_utc: string;
+};
+
+/**
+ * Fetches recent messages with full row data (including IDs).
+ * Used for feedback/bug context. Returns chronological order.
+ */
+export async function getRecentChatMessages(
+    db: D1Database,
+    userId: number,
+    limit: number = 20
+): Promise<ChatMessageRow[]> {
+    const results = await db.prepare(
+        `SELECT id, role, content, created_at_utc FROM (
+            SELECT id, role, content, created_at_utc
+            FROM chat_history WHERE user_id = ?
+            ORDER BY created_at_utc DESC LIMIT ?
+        ) ORDER BY created_at_utc ASC`
+    )
+        .bind(userId, limit)
+        .all<ChatMessageRow>();
+
+    return results.results ?? [];
+}
+
 /**
  * Deletes all chat history for a given user (e.g. if they want to clear context).
  */

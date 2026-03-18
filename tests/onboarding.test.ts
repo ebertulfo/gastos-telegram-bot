@@ -11,7 +11,7 @@ type UserRow = {
   onboarding_step: string | null;
 };
 
-function createOnboardingEnv(initialUser: UserRow | null) {
+function createOnboardingEnv(initialUser: UserRow | null, opts?: { githubToken?: string; githubRepo?: string }) {
   const upsertRun = vi.fn(async () => ({}));
   const userUpdateRun = vi.fn(async () => ({}));
   const send = vi.fn(async () => undefined);
@@ -34,6 +34,43 @@ function createOnboardingEnv(initialUser: UserRow | null) {
             };
             return upsertRun();
           })
+        }))
+      };
+    }
+
+    if (query.includes("INSERT INTO feedback")) {
+      return {
+        bind: vi.fn(() => ({
+          first: vi.fn(async () => ({ id: 1 }))
+        }))
+      };
+    }
+
+    if (query.includes("FROM chat_history")) {
+      return {
+        bind: vi.fn(() => ({
+          all: vi.fn(async () => ({
+            results: [
+              { id: 100, role: "user", content: "lunch 15", created_at_utc: "2026-03-18T10:00:00Z" },
+              { id: 101, role: "assistant", content: "Logged lunch 15 PHP", created_at_utc: "2026-03-18T10:00:01Z" }
+            ]
+          }))
+        }))
+      };
+    }
+
+    if (query.includes("FROM traces")) {
+      return {
+        bind: vi.fn(() => ({
+          all: vi.fn(async () => ({ results: [] }))
+        }))
+      };
+    }
+
+    if (query.includes("UPDATE feedback")) {
+      return {
+        bind: vi.fn(() => ({
+          run: vi.fn(async () => ({}))
         }))
       };
     }
@@ -83,7 +120,9 @@ function createOnboardingEnv(initialUser: UserRow | null) {
     MEDIA_BUCKET: { put } as unknown as R2Bucket,
     VECTORIZE: {} as unknown as VectorizeIndex,
     RATE_LIMITER: {} as unknown as KVNamespace,
-    INGEST_QUEUE: { send } as unknown as Queue<any>
+    INGEST_QUEUE: { send } as unknown as Queue<any>,
+    ...(opts?.githubToken ? { GITHUB_TOKEN: opts.githubToken } : {}),
+    ...(opts?.githubRepo ? { GITHUB_REPO: opts.githubRepo } : {}),
   };
 
   return { env, send };
@@ -194,6 +233,84 @@ describe("onboarding and command handling", () => {
     expect(body.text).toContain("SGD 1,234\\.56");
     expect(body.text).toContain("18 expenses");
     expect(body.text).toContain("3 need review");
+
+    fetchMock.mockRestore();
+  });
+
+  it("/feedback with text responds 'Thanks for your feedback!' and does not enqueue", async () => {
+    const app = createApp();
+    const { env, send } = createOnboardingEnv({
+      id: 1,
+      telegram_user_id: 88,
+      telegram_chat_id: 77,
+      timezone: "Asia/Manila",
+      currency: "PHP",
+      onboarding_step: "completed"
+    });
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+
+    const response = await app.fetch(requestForText("/feedback the bot is great"), env);
+    const json = (await response.json()) as { status: string };
+
+    expect(response.status).toBe(200);
+    expect(json.status).toBe("handled");
+    expect(send).not.toHaveBeenCalled();
+
+    const [, requestInit] = fetchMock.mock.calls[0];
+    const body = JSON.parse(String(requestInit?.body ?? "{}")) as { text?: string };
+    expect(body.text).toContain("Thanks for your feedback\\!");
+
+    fetchMock.mockRestore();
+  });
+
+  it("/bug with text responds 'Thanks for reporting this bug!' and does not enqueue", async () => {
+    const app = createApp();
+    const { env, send } = createOnboardingEnv({
+      id: 1,
+      telegram_user_id: 88,
+      telegram_chat_id: 77,
+      timezone: "Asia/Manila",
+      currency: "PHP",
+      onboarding_step: "completed"
+    });
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+
+    const response = await app.fetch(requestForText("/bug expenses disappear"), env);
+    const json = (await response.json()) as { status: string };
+
+    expect(response.status).toBe(200);
+    expect(json.status).toBe("handled");
+    expect(send).not.toHaveBeenCalled();
+
+    const [, requestInit] = fetchMock.mock.calls[0];
+    const body = JSON.parse(String(requestInit?.body ?? "{}")) as { text?: string };
+    expect(body.text).toContain("Thanks for reporting this bug\\!");
+
+    fetchMock.mockRestore();
+  });
+
+  it("/feedback without text responds with hint message", async () => {
+    const app = createApp();
+    const { env, send } = createOnboardingEnv({
+      id: 1,
+      telegram_user_id: 88,
+      telegram_chat_id: 77,
+      timezone: "Asia/Manila",
+      currency: "PHP",
+      onboarding_step: "completed"
+    });
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+
+    const response = await app.fetch(requestForText("/feedback"), env);
+    const json = (await response.json()) as { status: string };
+
+    expect(response.status).toBe(200);
+    expect(json.status).toBe("handled");
+    expect(send).not.toHaveBeenCalled();
+
+    const [, requestInit] = fetchMock.mock.calls[0];
+    const body = JSON.parse(String(requestInit?.body ?? "{}")) as { text?: string };
+    expect(body.text).toContain("/feedback your message here");
 
     fetchMock.mockRestore();
   });

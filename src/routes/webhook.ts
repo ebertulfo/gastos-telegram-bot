@@ -73,8 +73,10 @@ export async function handleTelegramWebhook(c: Context<{ Bindings: Env }>) {
 
   const handleValidPayload = async () => {
     const update = payload.data as TelegramUpdate;
+    let execCtx: ExecutionContext | undefined;
+    try { execCtx = c.executionCtx; } catch { /* tests don't have executionCtx */ }
     const handled = await tracer.span(traceId, "webhook.onboarding", userId, async () => {
-      return handleOnboardingOrCommand(c.env, update);
+      return handleOnboardingOrCommand(c.env, update, execCtx);
     });
     if (handled) {
       return c.json({ status: "handled", message: "Message handled by command/onboarding flow" }, 200);
