@@ -1,4 +1,7 @@
+import { getRecentChatMessages } from "./db/chat-history";
+import { insertFeedback, getRecentErrorTraces, updateGithubIssueUrl } from "./db/feedback";
 import { getUserByTelegramUserId, updateUserOnboardingState, upsertUserForStart } from "./db/users";
+import { createGithubIssue } from "./github";
 import { editTelegramMessageText, sendTelegramChatMessage, answerCallbackQuery } from "./telegram/messages";
 import { formatTotalsMessage, getTotalsForUserAndPeriod, parseTotalsPeriod } from "./totals";
 import type { Env, TelegramUpdate } from "./types";
@@ -21,7 +24,7 @@ const CURRENCY_TO_DEFAULT_TIMEZONE: Record<string, string> = {
   EUR: "Europe/Berlin"
 };
 
-export async function handleOnboardingOrCommand(env: Env, update: TelegramUpdate): Promise<boolean> {
+export async function handleOnboardingOrCommand(env: Env, update: TelegramUpdate, ctx?: ExecutionContext): Promise<boolean> {
   const message = update.message;
   const callbackQuery = update.callback_query;
   const isMessage = !!message;
@@ -76,6 +79,98 @@ export async function handleOnboardingOrCommand(env: Env, update: TelegramUpdate
         period: totalsPeriod
       })
     );
+    return true;
+  }
+
+  // Handle /feedback and /bug commands
+  const feedbackMatch = text.match(/^\/(feedback|bug)\s*(.*)/s);
+  if (feedbackMatch) {
+    const type = feedbackMatch[1] as "feedback" | "bug";
+    const feedbackText = feedbackMatch[2].trim();
+
+    if (!feedbackText) {
+      const hint = type === "feedback"
+        ? "Tell me what's on your mind:\n/feedback your message here"
+        : "Describe the issue you're seeing:\n/bug describe the problem here";
+      await sendTelegramChatMessage(env, chatId, hint);
+      return true;
+    }
+
+    if (!user || user.onboarding_step !== "completed") {
+      await sendTelegramChatMessage(env, chatId, "Set up first — send /start");
+      return true;
+    }
+
+    // Gather context
+    const chatMessages = await getRecentChatMessages(env.DB, user.id, 20);
+    const errorTraces = type === "bug" ? await getRecentErrorTraces(env.DB, user.id) : [];
+
+    // Insert to D1
+    const feedbackId = await insertFeedback(env.DB, {
+      userId: user.id,
+      telegramChatId: chatId,
+      type,
+      text: feedbackText,
+      chatContext: chatMessages.length > 0 ? JSON.stringify(chatMessages.map(m => m.id)) : null,
+      errorContext: errorTraces.length > 0 ? JSON.stringify(errorTraces) : null,
+    });
+
+    // Reply to user
+    const replyText = type === "feedback"
+      ? "Thanks for your feedback!"
+      : "Thanks for reporting this bug!";
+    await sendTelegramChatMessage(env, chatId, replyText);
+
+    // Fire-and-forget GitHub Issue creation
+    if (env.GITHUB_TOKEN && env.GITHUB_REPO) {
+      const minId = chatMessages.length > 0 ? chatMessages[0].id : 0;
+      const maxId = chatMessages.length > 0 ? chatMessages[chatMessages.length - 1].id : 0;
+
+      const issueBody = [
+        "## User Report",
+        feedbackText,
+        "",
+        "## User Context",
+        `- Telegram Chat ID: ${chatId}`,
+        `- Timezone: ${user.timezone} | Currency: ${user.currency} | Tier: ${user.tier}`,
+        `- Reported at: ${new Date().toISOString()}`,
+        `- Feedback row ID: ${feedbackId}`,
+        "",
+        "## Recent Chat History",
+        `${chatMessages.length} messages (IDs: ${minId}-${maxId})`,
+        "```",
+        `npx wrangler d1 execute gastos-db --remote --command "SELECT id, role, content, created_at_utc FROM chat_history WHERE user_id = ${user.id} ORDER BY created_at_utc DESC LIMIT 20"`,
+        "```",
+        "",
+        "## Recent Errors",
+        `${errorTraces.length} error traces found.`,
+        "```",
+        `npx wrangler d1 execute gastos-db --remote --command "SELECT trace_id, span_name, error_message, started_at_utc FROM traces WHERE user_id = ${user.id} AND status = 'error' ORDER BY started_at_utc DESC LIMIT 3"`,
+        "```",
+      ].join("\n");
+
+      const issueTitle = `[${type}] User ${chatId}: ${feedbackText.slice(0, 60)}`;
+      const issueLabels = [type];
+
+      const githubWork = async () => {
+        const url = await createGithubIssue(env.GITHUB_TOKEN!, env.GITHUB_REPO!, {
+          title: issueTitle,
+          body: issueBody,
+          labels: issueLabels,
+        });
+        if (url) {
+          await updateGithubIssueUrl(env.DB, feedbackId, url);
+        }
+      };
+
+      if (ctx) {
+        ctx.waitUntil(githubWork());
+      } else {
+        // No ExecutionContext (tests) — run inline but don't await
+        githubWork().catch(() => {});
+      }
+    }
+
     return true;
   }
 
