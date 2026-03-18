@@ -1,78 +1,134 @@
 import { describe, expect, it, vi } from "vitest";
-import { getRecentChatMessages } from "../src/db/chat-history";
+import { insertFeedback, updateGithubIssueUrl, getRecentErrorTraces } from "../src/db/feedback";
 
-function mockDb() {
-  return { prepare: vi.fn() } as unknown as D1Database;
-}
+describe("insertFeedback", () => {
+  it("inserts a feedback row and returns the new row id", async () => {
+    const first = vi.fn(async () => ({ id: 7 }));
+    const bind = vi.fn(() => ({ first }));
+    const prepare = vi.fn(() => ({ bind }));
+    const db = { prepare } as unknown as D1Database;
 
-describe("getRecentChatMessages", () => {
-  it("returns empty array when no messages exist", async () => {
-    const db = {
-      prepare: vi.fn(() => ({
-        bind: vi.fn(() => ({
-          all: vi.fn(async () => ({ results: [] })),
-        })),
-      })),
-    } as unknown as D1Database;
+    const id = await insertFeedback(db, {
+      userId: 1,
+      telegramChatId: 100,
+      type: "feedback",
+      text: "Love the app!",
+      chatContext: null,
+      errorContext: null,
+    });
 
-    const result = await getRecentChatMessages(db, 1);
-    expect(result).toEqual([]);
+    expect(prepare).toHaveBeenCalledWith(expect.stringContaining("INSERT INTO feedback"));
+    expect(prepare).toHaveBeenCalledWith(expect.stringContaining("RETURNING id"));
+    expect(bind).toHaveBeenCalledWith(
+      1, 100, "feedback", "Love the app!", null, null, expect.any(String)
+    );
+    expect(id).toBe(7);
   });
 
-  it("returns full row data including id and created_at_utc", async () => {
+  it("inserts a bug report with chat and error context", async () => {
+    const first = vi.fn(async () => ({ id: 42 }));
+    const bind = vi.fn(() => ({ first }));
+    const prepare = vi.fn(() => ({ bind }));
+    const db = { prepare } as unknown as D1Database;
+
+    const id = await insertFeedback(db, {
+      userId: 2,
+      telegramChatId: 200,
+      type: "bug",
+      text: "The bot crashed",
+      chatContext: "some chat history",
+      errorContext: "Error: something went wrong",
+    });
+
+    expect(bind).toHaveBeenCalledWith(
+      2, 200, "bug", "The bot crashed", "some chat history", "Error: something went wrong", expect.any(String)
+    );
+    expect(id).toBe(42);
+  });
+
+  it("throws if the insert returns no id", async () => {
+    const first = vi.fn(async () => null);
+    const bind = vi.fn(() => ({ first }));
+    const prepare = vi.fn(() => ({ bind }));
+    const db = { prepare } as unknown as D1Database;
+
+    await expect(
+      insertFeedback(db, {
+        userId: 1,
+        telegramChatId: 100,
+        type: "feedback",
+        text: "test",
+        chatContext: null,
+        errorContext: null,
+      })
+    ).rejects.toThrow("Failed to insert feedback");
+  });
+});
+
+describe("updateGithubIssueUrl", () => {
+  it("updates the github_issue_url for the given feedback id", async () => {
+    const run = vi.fn(async () => ({ meta: { changes: 1 } }));
+    const bind = vi.fn(() => ({ run }));
+    const prepare = vi.fn(() => ({ bind }));
+    const db = { prepare } as unknown as D1Database;
+
+    await updateGithubIssueUrl(db, 7, "https://github.com/owner/repo/issues/123");
+
+    expect(prepare).toHaveBeenCalledWith(expect.stringContaining("UPDATE feedback"));
+    expect(prepare).toHaveBeenCalledWith(expect.stringContaining("github_issue_url"));
+    expect(bind).toHaveBeenCalledWith("https://github.com/owner/repo/issues/123", 7);
+  });
+
+  it("resolves without throwing when no row is matched", async () => {
+    const run = vi.fn(async () => ({ meta: { changes: 0 } }));
+    const bind = vi.fn(() => ({ run }));
+    const prepare = vi.fn(() => ({ bind }));
+    const db = { prepare } as unknown as D1Database;
+
+    await expect(updateGithubIssueUrl(db, 9999, "https://example.com")).resolves.toBeUndefined();
+  });
+});
+
+describe("getRecentErrorTraces", () => {
+  it("returns error traces for a user ordered by most recent", async () => {
     const rows = [
-      { id: 1, role: "user", content: "Spent 10 on coffee", created_at_utc: "2026-03-18T08:00:00Z" },
-      { id: 2, role: "assistant", content: "Logged 10 for coffee", created_at_utc: "2026-03-18T08:00:01Z" },
+      { trace_id: "t1", span_name: "queue.process", error_message: "timeout", started_at_utc: "2026-03-18T10:00:00Z", duration_ms: 5000 },
+      { trace_id: "t2", span_name: "openai.call", error_message: "rate limit", started_at_utc: "2026-03-18T09:00:00Z", duration_ms: 200 },
     ];
+    const all = vi.fn(async () => ({ results: rows }));
+    const bind = vi.fn(() => ({ all }));
+    const prepare = vi.fn(() => ({ bind }));
+    const db = { prepare } as unknown as D1Database;
 
-    const db = {
-      prepare: vi.fn(() => ({
-        bind: vi.fn(() => ({
-          all: vi.fn(async () => ({ results: rows })),
-        })),
-      })),
-    } as unknown as D1Database;
+    const traces = await getRecentErrorTraces(db, 1);
 
-    const result = await getRecentChatMessages(db, 42);
-    expect(result).toHaveLength(2);
-    expect(result[0]).toMatchObject({ id: 1, role: "user", content: "Spent 10 on coffee" });
-    expect(result[1]).toMatchObject({ id: 2, role: "assistant", content: "Logged 10 for coffee" });
+    expect(prepare).toHaveBeenCalledWith(expect.stringContaining("SELECT"));
+    expect(prepare).toHaveBeenCalledWith(expect.stringContaining("status = 'error'"));
+    expect(prepare).toHaveBeenCalledWith(expect.stringContaining("ORDER BY"));
+    expect(bind).toHaveBeenCalledWith(1, 3);
+    expect(traces).toHaveLength(2);
+    expect(traces[0].trace_id).toBe("t1");
+    expect(traces[0].error_message).toBe("timeout");
   });
 
-  it("passes correct userId and limit to the query", async () => {
-    const bindMock = vi.fn(() => ({
-      all: vi.fn(async () => ({ results: [] })),
-    }));
-    const db = {
-      prepare: vi.fn(() => ({ bind: bindMock })),
-    } as unknown as D1Database;
+  it("accepts a custom limit", async () => {
+    const all = vi.fn(async () => ({ results: [] }));
+    const bind = vi.fn(() => ({ all }));
+    const prepare = vi.fn(() => ({ bind }));
+    const db = { prepare } as unknown as D1Database;
 
-    await getRecentChatMessages(db, 99, 5);
-    expect(bindMock).toHaveBeenCalledWith(99, 5);
+    await getRecentErrorTraces(db, 5, 10);
+
+    expect(bind).toHaveBeenCalledWith(5, 10);
   });
 
-  it("uses default limit of 20 when not specified", async () => {
-    const bindMock = vi.fn(() => ({
-      all: vi.fn(async () => ({ results: [] })),
-    }));
-    const db = {
-      prepare: vi.fn(() => ({ bind: bindMock })),
-    } as unknown as D1Database;
+  it("returns empty array when no error traces exist", async () => {
+    const all = vi.fn(async () => ({ results: [] }));
+    const bind = vi.fn(() => ({ all }));
+    const prepare = vi.fn(() => ({ bind }));
+    const db = { prepare } as unknown as D1Database;
 
-    await getRecentChatMessages(db, 7);
-    expect(bindMock).toHaveBeenCalledWith(7, 20);
-  });
-
-  it("handles null results gracefully", async () => {
-    const db = {
-      prepare: vi.fn(() => ({
-        bind: vi.fn(() => ({
-          all: vi.fn(async () => ({ results: null })),
-        })),
-      })),
-    } as unknown as D1Database;
-
-    const result = await getRecentChatMessages(db, 1);
-    expect(result).toEqual([]);
+    const traces = await getRecentErrorTraces(db, 99);
+    expect(traces).toEqual([]);
   });
 });
