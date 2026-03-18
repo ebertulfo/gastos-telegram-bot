@@ -33,7 +33,7 @@ bucket_name = "gastos-media"
 
 [vars]
 APP_ENV = "prod"
-ALLOWED_ORIGINS = "https://gastos-mini-app.pages.dev"
+ALLOWED_ORIGINS = "https://gastos-telegram-mini-app.pages.dev"
 OPENAI_TRANSCRIBE_MODEL = "whisper-1"
 OPENAI_VISION_MODEL = "gpt-4o-mini"
 
