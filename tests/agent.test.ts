@@ -61,7 +61,7 @@ describe("buildSystemPrompt", () => {
 
     it("includes no-clarification rule for clear time expressions", () => {
         const prompt = buildSystemPrompt("UTC", "USD");
-        expect(prompt).toContain("Do NOT ask for clarification");
+        expect(prompt).toContain("NEVER ask for clarification on clear time expressions");
     });
 
     it("includes standalone query scope rule", () => {
