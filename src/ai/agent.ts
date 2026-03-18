@@ -5,7 +5,7 @@ import { createAgentTools } from "./tools";
 /**
  * Builds the system prompt for the Gastos agent with user-specific context.
  */
-export function buildSystemPrompt(timezone: string, currency: string): string {
+export function buildSystemPrompt(timezone: string, currency: string, recentExpensesContext?: string): string {
     const today = new Date().toLocaleDateString("en-US", {
         timeZone: timezone,
         weekday: "long",
@@ -94,20 +94,20 @@ TONE:
 - Format currency as: CUR amount (e.g. SGD 12.50). Always include the currency code
 - Use consistent dash bullets (—) for lists, not mixed bullets
 - Do not end short confirmations with periods — feels more natural in chat
-- Keep follow-up answers anchored to the previous context. If the user asks "how about yesterday?", carry over the previous filter`;
+- Keep follow-up answers anchored to the previous context. If the user asks "how about yesterday?", carry over the previous filter${recentExpensesContext ? `\n\nRECENT EXPENSES (reference these IDs for edit/delete — never show IDs to user):\n${recentExpensesContext}` : ""}`;
 }
 
 /**
  * Creates a configured Gastos SDK Agent with tools bound to the authenticated user.
  * The agent handles both expense logging and financial Q&A in a unified flow.
  */
-export function createGastosAgent(env: Env, userId: number, telegramId: number, timezone: string, currency: string) {
+export function createGastosAgent(env: Env, userId: number, telegramId: number, timezone: string, currency: string, recentExpensesContext?: string) {
     const tools = createAgentTools(env, userId, telegramId, timezone, currency);
 
     return new Agent({
         name: "gastos",
         model: "gpt-5-mini",
-        instructions: buildSystemPrompt(timezone, currency),
+        instructions: buildSystemPrompt(timezone, currency, recentExpensesContext),
         tools,
     });
 }

@@ -3,6 +3,7 @@ import { OpenAIProvider } from "@openai/agents-openai";
 import type { AgentInputItem } from "@openai/agents";
 import { createGastosAgent } from "./ai/agent";
 import { D1Session } from "./ai/session";
+import { getRecentExpenses } from "./db/expenses";
 import { transcribeR2Audio } from "./ai/openai";
 import { sendTelegramChatMessage, sendChatAction } from "./telegram/messages";
 import { StreamingReplyManager, getToolStatusText } from "./telegram/streaming";
@@ -119,8 +120,18 @@ async function processMessage(
     agentInput = body.text ?? "";
   }
 
-  // 5. Create agent and session
-  const agent = createGastosAgent(env, userId, telegramId, timezone, currency);
+  // 5. Fetch recent expenses for agent context (prevents hallucinated IDs on edit/delete)
+  const recentExpenses = await getRecentExpenses(env.DB, userId, 10);
+  const recentExpensesContext = recentExpenses.length > 0
+    ? recentExpenses.map(e => {
+        const date = new Date(e.occurred_at_utc).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+        const amount = (e.amount_minor / 100).toFixed(2);
+        return `#${e.id} ${date} — ${e.currency} ${amount} — ${e.description ?? "Unknown"} (${e.category})`;
+      }).join("\n")
+    : "";
+
+  // 6. Create agent and session
+  const agent = createGastosAgent(env, userId, telegramId, timezone, currency, recentExpensesContext);
   const session = new D1Session(env.DB, userId);
 
   // 6. Run the agent (streaming)

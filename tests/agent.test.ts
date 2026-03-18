@@ -100,6 +100,19 @@ describe("buildSystemPrompt", () => {
         const currentYear = new Date().getFullYear().toString();
         expect(prompt).toContain(currentYear);
     });
+
+    it("includes recent expenses context when provided", () => {
+        const context = "#42 Mar 18 — SGD 280.00 — Coffee (Food)";
+        const prompt = buildSystemPrompt("UTC", "USD", context);
+        expect(prompt).toContain("RECENT EXPENSES");
+        expect(prompt).toContain("#42");
+        expect(prompt).toContain("Coffee");
+    });
+
+    it("omits recent expenses section when no context", () => {
+        const prompt = buildSystemPrompt("UTC", "USD");
+        expect(prompt).not.toContain("RECENT EXPENSES");
+    });
 });
 
 describe("createGastosAgent", () => {
