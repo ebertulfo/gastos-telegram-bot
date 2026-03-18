@@ -109,9 +109,21 @@ describe("buildSystemPrompt", () => {
         expect(prompt).toContain("Coffee");
     });
 
-    it("omits recent expenses section when no context", () => {
+    it("omits recent expenses data section when no context", () => {
         const prompt = buildSystemPrompt("UTC", "USD");
-        expect(prompt).not.toContain("RECENT EXPENSES");
+        expect(prompt).not.toContain("RECENT EXPENSES (reference these IDs");
+    });
+
+    it("includes correction/negation rule", () => {
+        const prompt = buildSystemPrompt("UTC", "USD");
+        expect(prompt).toContain("CORRECTIONS");
+        expect(prompt).toContain("edit_expense");
+    });
+
+    it("includes dollar sign currency rule", () => {
+        const prompt = buildSystemPrompt("UTC", "SGD");
+        expect(prompt).toContain("$");
+        expect(prompt).toContain("default currency");
     });
 
     it.each([

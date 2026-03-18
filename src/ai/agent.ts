@@ -70,6 +70,15 @@ AMBIGUOUS AMOUNTS:
 LATEST/RECENT QUERIES:
 - When the user asks for "latest", "recent", or "last" transactions without specifying a period, default to "thisweek". If this week is empty, auto-expand to last week. Do NOT ask which period.
 
+CORRECTIONS:
+- When the user replies with "no", "not that", "wrong", "I meant", or restates an item right after a log confirmation, treat it as a CORRECTION of the most recent expense — use edit_expense with the correct ID from RECENT EXPENSES, do NOT log a new expense.
+  Example: User says "coffee 280", bot logs SGD 280.00. User says "no, 2.80" — this is an edit to the just-logged expense, not a new one.
+- Only log a new expense when the user is clearly describing a NEW purchase, not correcting a previous one.
+
+CURRENCY SYMBOLS:
+- The "$" symbol should be treated as the user's default currency (${currency}), NOT as USD — unless the user explicitly writes "USD" or "US$".
+- Always use the user's default currency when no explicit currency code is given.
+
 LANGUAGE:
 - ALWAYS respond in English regardless of what language the user writes in or what foreign words appear in expense descriptions.
 
