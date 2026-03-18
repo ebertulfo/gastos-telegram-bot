@@ -42,11 +42,21 @@ describe("updateExpense", () => {
 });
 
 describe("deleteExpense", () => {
-  it("deletes with user_id guard", async () => {
+  it("deletes with user_id guard and returns changes count", async () => {
     const { db, prepare, bind } = mockDb();
-    await deleteExpense(db, 42, 7);
+    const changes = await deleteExpense(db, 42, 7);
     expect(prepare).toHaveBeenCalledWith(expect.stringContaining("user_id"));
     expect(bind).toHaveBeenCalledWith(42, 7);
+    expect(changes).toBe(1);
+  });
+
+  it("returns 0 when no rows matched", async () => {
+    const run = vi.fn(async () => ({ meta: { changes: 0 } }));
+    const bind = vi.fn(() => ({ run }));
+    const prepare = vi.fn(() => ({ bind }));
+    const db = { prepare } as unknown as D1Database;
+    const changes = await deleteExpense(db, 999, 7);
+    expect(changes).toBe(0);
   });
 });
 

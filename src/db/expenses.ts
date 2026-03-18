@@ -118,12 +118,14 @@ export async function insertExpense(
   return result.meta.last_row_id as number;
 }
 
-export async function deleteExpense(db: D1Database, expenseId: number, userId: number): Promise<void> {
-    await db.prepare(
+export async function deleteExpense(db: D1Database, expenseId: number, userId: number): Promise<number> {
+    const result = await db.prepare(
         `DELETE FROM expenses WHERE id = ? AND user_id = ?`
     )
         .bind(expenseId, userId)
         .run();
+
+    return result.meta.changes;
 }
 
 export async function getUserTags(db: D1Database, userId: number): Promise<string[]> {
