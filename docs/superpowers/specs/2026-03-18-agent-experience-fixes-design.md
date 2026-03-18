@@ -120,7 +120,7 @@ This is a model behavior issue — the agent invoked the tool twice for a single
 
 ### Solution
 
-Add a prompt rule:
+**A. Prompt rule:**
 
 ```
 DUPLICATE PREVENTION:
@@ -128,32 +128,48 @@ DUPLICATE PREVENTION:
 - Only call log_expense multiple times when the user explicitly lists multiple distinct items (e.g. "coffee 5 and lunch 12").
 ```
 
+**B. Code-level dedup guard in `createAgentTools()`:**
+
+Track `log_expense` calls within a single agent run using a `Set` in the closure. If `log_expense` is called with identical `description + amount + currency`, skip the second call and return "Already logged". This catches model misbehavior even if the prompt rule fails.
+
+```typescript
+const loggedThisRun = new Set<string>();
+// Inside log_expense execute:
+const dedupeKey = `${input.description}|${input.amount}|${input.currency}`;
+if (loggedThisRun.has(dedupeKey)) {
+  return "Already logged this expense — skipping duplicate";
+}
+loggedThisRun.add(dedupeKey);
+```
+
 ### Files Changed
 
 - `src/ai/agent.ts` — add DUPLICATE PREVENTION section to system prompt
+- `src/ai/tools.ts` — add dedup `Set` in `createAgentTools()` closure, check in `log_expense`
 
 ---
 
-## Problem 4: "$100 plus $1.50" Logged Without Descriptions
+## Problem 4: "$100 plus $1.50" — Ambiguous Amounts vs Brand Names
 
 ### Root Cause
 
-The agent logged both as "Expense (Other)" — it didn't ask for descriptions when the user provided amounts without context.
+The user said "$100 plus $1.50" meaning "100 Plus (a drink brand) costing $1.50". The agent interpreted it as two separate expenses: $100 and $1.50, both logged as "Expense (Other)". The agent can't distinguish between "amount + amount" and "brand name containing a number + amount".
 
 ### Solution
 
 Add a prompt rule:
 
 ```
-MISSING DESCRIPTION:
-- If the user gives amounts without any description (e.g. "$100 plus $1.50"), ask what they were for before logging.
-  Example: "What were the $100 and $1.50 for?"
-- Only log immediately when both amount AND description are clear.
+AMBIGUOUS AMOUNTS:
+- When a message contains multiple numbers and it's unclear which are amounts vs part of a name, ASK before logging.
+  Example: "100 plus 1.50" — ask: "Is '100 Plus' the item name with a price of 1.50, or are you logging two expenses?"
+- Only log multiple expenses when they are clearly distinct items (e.g. "coffee 5 and lunch 12").
+- If a message has amounts but no clear description of what was purchased, ask what it was for before logging.
 ```
 
 ### Files Changed
 
-- `src/ai/agent.ts` — add MISSING DESCRIPTION section to system prompt
+- `src/ai/agent.ts` — add AMBIGUOUS AMOUNTS section to system prompt
 
 ---
 
@@ -206,10 +222,10 @@ Note: This is hardcoded for now. TODO: make language configurable per user (a `l
 
 | File | Changes |
 |------|---------|
-| `src/ai/agent.ts` | `buildSystemPrompt()` takes recent expenses param; add 6 new prompt sections |
+| `src/ai/agent.ts` | `buildSystemPrompt()` takes recent expenses param; add 6 new prompt sections (AMOUNT HANDLING, DUPLICATE PREVENTION, AMBIGUOUS AMOUNTS, LATEST/RECENT QUERIES, LANGUAGE, RECENT EXPENSES) |
 | `src/queue.ts` | Fetch recent expenses before agent run, pass to agent factory |
 | `src/db/expenses.ts` | `updateExpense` and `deleteExpense` return `Promise<number>` |
-| `src/ai/tools.ts` | `edit_expense` and `delete_expense` check row count, report failure on 0 |
+| `src/ai/tools.ts` | `edit_expense` and `delete_expense` check row count; `log_expense` dedup guard via `Set` |
 | `tests/tools.test.ts` | Test edit/delete with 0 rows affected |
 | `tests/expenses.test.ts` | Test return values from update/delete |
 | `tests/agent.test.ts` | Test that system prompt includes recent expenses section |
@@ -223,6 +239,7 @@ Note: This is hardcoded for now. TODO: make language configurable per user (a `l
 - `getRecentExpenses` returns last 10 expenses with descriptions
 - `buildSystemPrompt` includes RECENT EXPENSES section when context provided
 - `buildSystemPrompt` omits RECENT EXPENSES section when no context (backward compatible)
+- `log_expense` dedup guard skips duplicate description+amount+currency in same run
 - Each new prompt section is present in system prompt output
 
 ## Out of Scope
