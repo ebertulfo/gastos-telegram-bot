@@ -62,6 +62,10 @@ LIMIT 3
 
 Serialize as JSON. If no errors found, set to `null`.
 
+## Privacy
+
+Chat message content and error details are stored only in D1 (private). GitHub Issues receive only message IDs and a query command — no user content is exposed publicly.
+
 ## GitHub Issue Creation
 
 POST to `https://api.github.com/repos/{owner}/{repo}/issues` via `fetch()` inside `waitUntil`.
@@ -85,14 +89,15 @@ Body:
 - Telegram Chat ID: {telegram_chat_id}
 - Timezone: {timezone} | Currency: {currency} | Tier: {tier}
 - Reported at: {created_at_utc}
+- Feedback row ID: {feedback_id}
 
 ## Recent Chat History
-```
-{formatted chat messages, role: content, one per line}
-```
+20 messages (IDs: {min_id}-{max_id})
+Query: `npx wrangler d1 execute gastos-db --remote --command "SELECT id, role, content, created_at_utc FROM chat_history WHERE user_id = {user_id} ORDER BY created_at_utc DESC LIMIT 20"`
 
 ## Recent Errors
-{formatted error traces or "No recent errors"}
+{count} error traces found for this user.
+Query: `npx wrangler d1 execute gastos-db --remote --command "SELECT trace_id, span_name, error_message, started_at_utc FROM traces WHERE user_id = {user_id} AND status = 'error' ORDER BY started_at_utc DESC LIMIT 3"`
 ```
 
 **Error handling:** If GitHub API fails, log the error but don't retry or notify the user. The D1 record is the source of truth; the GitHub Issue is best-effort.
