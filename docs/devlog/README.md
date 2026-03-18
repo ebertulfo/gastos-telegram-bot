@@ -6,6 +6,7 @@ Development journal capturing iterations, decisions, and learnings. Raw material
 
 | Date | Session | Highlights |
 |------|---------|------------|
+| 2026-03-18 | [Security Sweep + Agent Experience](2026-03-18-security-sweep-agent-experience.md) | 10 security fixes merged, mock data fallback removed, hallucinated IDs fixed, 8 prompt rules, latency 19s→3s |
 | 2026-03-14 | [Streaming Replies](2026-03-14-streaming-replies.md) | sendMessageDraft streaming, StreamingReplyManager, subagent-driven 3-task execution, deployed |
 | 2026-03-13 | [Tracing Improvements Implementation](2026-03-13-tracing-improvements-implementation.md) | Subagent-driven: 6 tasks, ITracer abstraction, 17 spans, debug endpoints, deployed (PR #5) |
 | 2026-03-13 | [Tracing Improvements Plan](2026-03-13-tracing-improvements-plan.md) | Assessed tracing gaps, designed 6-task plan: NoopTracer, 10 new spans, queue wait time, debug endpoints |
