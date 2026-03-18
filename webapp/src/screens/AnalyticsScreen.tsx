@@ -7,7 +7,6 @@ import { TransactionList } from "../components/TransactionList";
 import { EditDrawer } from "../components/EditDrawer";
 import { Skeleton } from "../components/ui/skeleton";
 import { fetchExpenses, fetchUserProfile, fetchUserTags } from "../lib/api";
-import { MOCK_EXPENSES, MOCK_TAGS } from "../lib/mock-data";
 import { getCategoryConfig } from "../lib/categories";
 import { formatAmountShort } from "../lib/format";
 import type { ExpenseWithDetails, Period } from "../lib/types";
@@ -31,15 +30,18 @@ export function AnalyticsScreen({ drillDownCategory, onDrillDown, onBack }: Anal
   const [currency, setCurrency] = useState("SGD");
   const [selectedExpense, setSelectedExpense] = useState<ExpenseWithDetails | null>(null);
   const [allTags, setAllTags] = useState<string[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
   const loadExpenses = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const data = await fetchExpenses(period);
       setExpenses(data);
-    } catch {
-      if (import.meta.env.DEV) console.info("[dev] API unreachable, using mock data");
-      setExpenses(MOCK_EXPENSES);
+    } catch (e) {
+      console.error("Failed to fetch expenses:", e);
+      setExpenses([]);
+      setError("Could not load expenses. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -52,9 +54,7 @@ export function AnalyticsScreen({ drillDownCategory, onDrillDown, onBack }: Anal
   }, []);
 
   useEffect(() => {
-    fetchUserTags().then(setAllTags).catch(() => {
-      if (import.meta.env.DEV) setAllTags(MOCK_TAGS);
-    });
+    fetchUserTags().then(setAllTags).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -132,6 +132,17 @@ export function AnalyticsScreen({ drillDownCategory, onDrillDown, onBack }: Anal
           {[1, 2, 3].map((i) => (
             <Skeleton key={i} className="h-10 w-full rounded-lg" />
           ))}
+        </div>
+      ) : error ? (
+        <div className="py-12 text-center">
+          <p className="text-sm" style={{ color: "var(--text-secondary)" }}>{error}</p>
+          <button
+            onClick={loadExpenses}
+            className="mt-3 rounded-lg px-4 py-2 text-sm font-medium"
+            style={{ background: "var(--accent)", color: "var(--accent-foreground)" }}
+          >
+            Retry
+          </button>
         </div>
       ) : expenses.length === 0 ? (
         <div className="py-12 text-center text-sm" style={{ color: "var(--text-secondary)" }}>
