@@ -29,8 +29,8 @@ Assess the task size and announce the pipeline before starting any work.
 | 6. Code review | - | `superpowers:requesting-code-review` | `superpowers:requesting-code-review` | `superpowers:requesting-code-review` |
 | 7. Simplify | - | - | `simplify` | `simplify` |
 | 8. Revise CLAUDE.md | - | - | `claude-md-management:revise-claude-md` | `claude-md-management:revise-claude-md` |
-| 9. Commit/PR | `commit-commands:commit` | `commit-commands:commit` | `commit-commands:commit-push-pr` | `commit-commands:commit-push-pr` |
-| 10. Deploy | - | - | Prompt user | Prompt user |
+| 9. PR | `commit-commands:commit-push-pr` | `commit-commands:commit-push-pr` | `commit-commands:commit-push-pr` | `commit-commands:commit-push-pr` |
+| 10. Deploy | After merge | After merge | After merge | After merge |
 
 ## Process
 
@@ -54,8 +54,8 @@ Say otherwise if you disagree.
 ```
 
 Required steps arrays by size:
-- Trivial: `["verify", "commit"]`
-- Small: `["tdd", "verify", "review", "commit"]`
+- Trivial: `["verify", "commit-pr"]`
+- Small: `["tdd", "verify", "review", "commit-pr"]`
 - Medium: `["plan", "worktree", "tdd", "verify", "review", "simplify", "revise-claude-md", "commit-pr"]`
 - Large: `["brainstorm", "plan", "worktree", "tdd", "verify", "review", "simplify", "revise-claude-md", "commit-pr"]`
 
