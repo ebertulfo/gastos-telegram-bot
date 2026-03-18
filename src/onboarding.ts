@@ -2,6 +2,7 @@ import { getRecentChatMessages } from "./db/chat-history";
 import { insertFeedback, getRecentErrorTraces, updateGithubIssueUrl } from "./db/feedback";
 import { getUserByTelegramUserId, updateUserOnboardingState, upsertUserForStart } from "./db/users";
 import { createGithubIssue } from "./github";
+import { checkFeedbackRateLimit } from "./rate-limiter";
 import { editTelegramMessageText, sendTelegramChatMessage, answerCallbackQuery } from "./telegram/messages";
 import { formatTotalsMessage, getTotalsForUserAndPeriod, parseTotalsPeriod } from "./totals";
 import type { Env, TelegramUpdate } from "./types";
@@ -98,6 +99,12 @@ export async function handleOnboardingOrCommand(env: Env, update: TelegramUpdate
 
     if (!user || user.onboarding_step !== "completed") {
       await sendTelegramChatMessage(env, chatId, "Set up first — send /start");
+      return true;
+    }
+
+    const feedbackAllowed = await checkFeedbackRateLimit(env, telegramUserId);
+    if (!feedbackAllowed) {
+      await sendTelegramChatMessage(env, chatId, "You've sent too many reports this hour — please try again later");
       return true;
     }
 
