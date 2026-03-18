@@ -3,6 +3,7 @@ import { cors } from "hono/cors";
 import { buildOpenApiSpec } from "./openapi";
 import { handleTelegramWebhook } from "./routes/webhook";
 import { apiRouter } from "./routes/api";
+import { verifyWebhookSecret } from "./webhook-auth";
 import type { Env } from "./types";
 
 export function createApp() {
@@ -12,19 +13,45 @@ export function createApp() {
   app.use(
     "/api/*",
     cors({
-      origin: "*", // Or restrict to your Pages domain
+      origin: (origin, c) => {
+        const env = c.env as Env;
+        const allowed = env.ALLOWED_ORIGINS?.split(",").map((s) => s.trim()).filter(Boolean) ?? [];
+        if (env.APP_ENV === "development") {
+          allowed.push("http://localhost:5173", "http://localhost:4173");
+        }
+        return allowed.includes(origin) ? origin : null;
+      },
       allowHeaders: ["Authorization", "Content-Type"],
       allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
     })
   );
 
+  app.use("/api/*", async (c, next) => {
+    await next();
+    c.header("X-Content-Type-Options", "nosniff");
+    c.header("X-Frame-Options", "DENY");
+  });
+
   app.get("/health", (c) => c.json({ status: "ok", env: c.env.APP_ENV }));
+
+  // Webhook signature validation
+  app.use("/webhook/telegram", async (c, next) => {
+    const secret = c.req.header("X-Telegram-Bot-Api-Secret-Token");
+    if (!verifyWebhookSecret(secret, c.env.TELEGRAM_WEBHOOK_SECRET)) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    await next();
+  });
+
   app.post("/webhook/telegram", handleTelegramWebhook);
   app.route("/api", apiRouter);
 
   // ── DEBUG ENDPOINTS (only available in development) ────────────────
   app.use("/debug/*", async (c, next) => {
     if (c.env.APP_ENV !== "development") {
+      return c.json({ error: "Not found" }, 404);
+    }
+    if (!c.env.DEBUG_SECRET || c.req.query("secret") !== c.env.DEBUG_SECRET) {
       return c.json({ error: "Not found" }, 404);
     }
     await next();

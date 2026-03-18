@@ -2,6 +2,8 @@ import { Hono } from "hono";
 import { validateTelegramInitData } from "../telegram/auth";
 import { getExpenses, updateExpense, deleteExpense, getUserTags } from "../db/expenses";
 import { parseTotalsPeriod } from "../totals";
+import { checkApiRateLimit } from "../rate-limiter";
+import { KNOWN_CURRENCIES } from "../onboarding";
 import type { Env } from "../types";
 
 // Extend Hono variables to include our authenticated user
@@ -56,6 +58,15 @@ apiRouter.use("*", async (c, next) => {
     }
 });
 
+// Rate Limiting Middleware
+apiRouter.use("*", async (c, next) => {
+    const allowed = await checkApiRateLimit(c.env, c.get("userId"));
+    if (!allowed) {
+        return c.json({ error: "Too many requests. Please try again later." }, 429);
+    }
+    await next();
+});
+
 // Endpoints
 
 apiRouter.get("/users/me", (c) => {
@@ -107,6 +118,9 @@ apiRouter.put("/expenses/:id", async (c) => {
     if (currency !== undefined && typeof currency !== "string") {
         return c.json({ error: "currency must be a string" }, 400);
     }
+    if (currency !== undefined && !KNOWN_CURRENCIES.has(currency.toUpperCase())) {
+        return c.json({ error: "Unsupported currency code" }, 400);
+    }
     if (category !== undefined && typeof category !== "string") {
         return c.json({ error: "category must be a string" }, 400);
     }
@@ -120,7 +134,7 @@ apiRouter.put("/expenses/:id", async (c) => {
 
     const updateData: Record<string, unknown> = {};
     if (amount_minor !== undefined) updateData.amount_minor = amount_minor;
-    if (currency !== undefined) updateData.currency = currency;
+    if (currency !== undefined) updateData.currency = currency.toUpperCase();
     if (category !== undefined) updateData.category = category;
     if (tags !== undefined) updateData.tags = JSON.stringify(tags);
     if (occurred_at_utc !== undefined) {
@@ -171,7 +185,7 @@ apiRouter.delete("/expenses/:id", async (c) => {
         return c.json({ error: "Invalid expense ID" }, 400);
     }
 
-    const expense = await c.env.DB.prepare(`SELECT source_event_id FROM expenses WHERE id = ?`).bind(expenseId).first<{ source_event_id: number }>();
+    const expense = await c.env.DB.prepare(`SELECT source_event_id FROM expenses WHERE id = ? AND user_id = ?`).bind(expenseId, c.get("userId")).first<{ source_event_id: number }>();
 
     await deleteExpense(c.env.DB, expenseId, c.get("userId"));
 

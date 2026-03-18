@@ -4,7 +4,8 @@ import * as rateLimiter from "../src/rate-limiter";
 import type { Env } from "../src/types";
 
 vi.mock("../src/rate-limiter", () => ({
-  checkRateLimit: vi.fn()
+  checkRateLimit: vi.fn(),
+  checkApiRateLimit: vi.fn().mockResolvedValue(true)
 }));
 
 type MockDbOptions = {
@@ -91,6 +92,7 @@ function createEnv(options: MockDbOptions = {}) {
   const env: Env = {
     APP_ENV: "test",
     TELEGRAM_BOT_TOKEN: "token",
+    TELEGRAM_WEBHOOK_SECRET: "test-webhook-secret",
     DB: dbState.db,
     MEDIA_BUCKET: { put } as unknown as R2Bucket,
     VECTORIZE: { upsert: vi.fn(), query: vi.fn(), deleteByIds: vi.fn() } as unknown as VectorizeIndex,
@@ -145,6 +147,68 @@ type WebhookResponse = {
   message: string;
 };
 
+describe("webhook signature validation", () => {
+  it("rejects requests without secret token header", async () => {
+    const app = createApp();
+    const { env } = createEnv({ duplicate: false });
+
+    const response = await app.fetch(
+      new Request("http://localhost/webhook/telegram", {
+        method: "POST",
+        body: buildTextUpdateBody(),
+        headers: { "content-type": "application/json" }
+      }),
+      env
+    );
+
+    expect(response.status).toBe(401);
+    const json = (await response.json()) as { error: string };
+    expect(json.error).toBe("Unauthorized");
+  });
+
+  it("rejects requests with wrong secret token", async () => {
+    const app = createApp();
+    const { env } = createEnv({ duplicate: false });
+
+    const response = await app.fetch(
+      new Request("http://localhost/webhook/telegram", {
+        method: "POST",
+        body: buildTextUpdateBody(),
+        headers: {
+          "content-type": "application/json",
+          "X-Telegram-Bot-Api-Secret-Token": "wrong-secret"
+        }
+      }),
+      env
+    );
+
+    expect(response.status).toBe(401);
+    const json = (await response.json()) as { error: string };
+    expect(json.error).toBe("Unauthorized");
+  });
+
+  it("accepts requests with correct secret token", async () => {
+    vi.mocked(rateLimiter.checkRateLimit).mockResolvedValue(true);
+
+    const app = createApp();
+    const { env } = createEnv({ duplicate: false });
+
+    const response = await app.fetch(
+      new Request("http://localhost/webhook/telegram", {
+        method: "POST",
+        body: buildTextUpdateBody(),
+        headers: {
+          "content-type": "application/json",
+          "X-Telegram-Bot-Api-Secret-Token": "test-webhook-secret"
+        }
+      }),
+      env
+    );
+
+    expect(response.status).toBe(200);
+  });
+});
+
 describe("telegram webhook", () => {
   it("queues text messages", async () => {
     vi.mocked(rateLimiter.checkRateLimit).mockResolvedValue(true);
@@ -159,7 +223,7 @@ describe("telegram webhook", () => {
       new Request("http://localhost/webhook/telegram", {
         method: "POST",
         body: buildTextUpdateBody(),
-        headers: { "content-type": "application/json" }
+        headers: { "content-type": "application/json", "X-Telegram-Bot-Api-Secret-Token": "test-webhook-secret" }
       }),
       env
     );
@@ -192,7 +256,7 @@ describe("telegram webhook", () => {
       new Request("http://localhost/webhook/telegram", {
         method: "POST",
         body: buildTextUpdateBody(),
-        headers: { "content-type": "application/json" }
+        headers: { "content-type": "application/json", "X-Telegram-Bot-Api-Secret-Token": "test-webhook-secret" }
       }),
       env
     );
@@ -218,7 +282,7 @@ describe("telegram webhook", () => {
       new Request("http://localhost/webhook/telegram", {
         method: "POST",
         body: buildTextUpdateBody(),
-        headers: { "content-type": "application/json" }
+        headers: { "content-type": "application/json", "X-Telegram-Bot-Api-Secret-Token": "test-webhook-secret" }
       }),
       env
     );
@@ -244,7 +308,7 @@ describe("telegram webhook", () => {
       new Request("http://localhost/webhook/telegram", {
         method: "POST",
         body: buildTextUpdateBody(),
-        headers: { "content-type": "application/json" }
+        headers: { "content-type": "application/json", "X-Telegram-Bot-Api-Secret-Token": "test-webhook-secret" }
       }),
       env
     );
@@ -273,7 +337,7 @@ describe("telegram webhook", () => {
       new Request("http://localhost/webhook/telegram", {
         method: "POST",
         body: buildPhotoUpdateBody(),
-        headers: { "content-type": "application/json" }
+        headers: { "content-type": "application/json", "X-Telegram-Bot-Api-Secret-Token": "test-webhook-secret" }
       }),
       env
     );
@@ -312,7 +376,7 @@ describe("telegram webhook", () => {
       new Request("http://localhost/webhook/telegram", {
         method: "POST",
         body: buildVoiceUpdateBody(),
-        headers: { "content-type": "application/json" }
+        headers: { "content-type": "application/json", "X-Telegram-Bot-Api-Secret-Token": "test-webhook-secret" }
       }),
       env
     );
