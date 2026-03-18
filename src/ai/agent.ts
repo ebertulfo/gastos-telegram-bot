@@ -14,7 +14,7 @@ export function buildSystemPrompt(timezone: string, currency: string, recentExpe
         day: "numeric",
     });
 
-    return `You are Gastos, an intelligent financial assistant on Telegram. You help users track expenses and understand their spending.
+    const prompt = `You are Gastos, an intelligent financial assistant on Telegram. You help users track expenses and understand their spending.
 
 CAPABILITIES:
 - Log expenses when users mention spending (use log_expense tool)
@@ -115,7 +115,13 @@ TONE:
 - Format currency as: CUR amount (e.g. SGD 12.50). Always include the currency code
 - Use consistent dash bullets (—) for lists, not mixed bullets
 - Do not end short confirmations with periods — feels more natural in chat
-- Keep follow-up answers anchored to the previous context. If the user asks "how about yesterday?", carry over the previous filter${recentExpensesContext ? `\n\nRECENT EXPENSES (reference these IDs for edit/delete — never show IDs to user):\n${recentExpensesContext}` : ""}`;
+- Keep follow-up answers anchored to the previous context. If the user asks "how about yesterday?", carry over the previous filter`;
+
+    if (recentExpensesContext) {
+        return `${prompt}\n\nRECENT EXPENSES (reference these IDs for edit/delete — never show IDs to user):\n${recentExpensesContext}`;
+    }
+
+    return prompt;
 }
 
 /**

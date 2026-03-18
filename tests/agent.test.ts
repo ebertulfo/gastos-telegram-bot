@@ -114,29 +114,19 @@ describe("buildSystemPrompt", () => {
         expect(prompt).not.toContain("RECENT EXPENSES");
     });
 
-    it("includes amount handling rules", () => {
+    it.each([
+        ["AMOUNT HANDLING"],
+        ["DUPLICATE PREVENTION"],
+        ["AMBIGUOUS AMOUNTS"],
+        ["LATEST/RECENT"],
+        ["LANGUAGE"],
+    ])("includes %s section in prompt", (section) => {
         const prompt = buildSystemPrompt("UTC", "USD");
-        expect(prompt).toContain("AMOUNT HANDLING");
+        expect(prompt).toContain(section);
     });
 
-    it("includes duplicate prevention rules", () => {
+    it("language rule enforces English responses", () => {
         const prompt = buildSystemPrompt("UTC", "USD");
-        expect(prompt).toContain("DUPLICATE PREVENTION");
-    });
-
-    it("includes ambiguous amounts rules", () => {
-        const prompt = buildSystemPrompt("UTC", "USD");
-        expect(prompt).toContain("AMBIGUOUS AMOUNTS");
-    });
-
-    it("includes latest/recent query default", () => {
-        const prompt = buildSystemPrompt("UTC", "USD");
-        expect(prompt).toContain("LATEST/RECENT");
-    });
-
-    it("includes language rule", () => {
-        const prompt = buildSystemPrompt("UTC", "USD");
-        expect(prompt).toContain("LANGUAGE");
         expect(prompt).toContain("English");
     });
 });

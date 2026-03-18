@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { updateExpense, deleteExpense, getUserTags, getRecentExpenses } from "../src/db/expenses";
 
-function mockDb() {
-  const run = vi.fn(async () => ({ meta: { changes: 1 } }));
+function mockDb(changes = 1) {
+  const run = vi.fn(async () => ({ meta: { changes } }));
   const bind = vi.fn(() => ({ run }));
   const prepare = vi.fn(() => ({ bind }));
   return { db: { prepare } as unknown as D1Database, prepare, bind, run };
@@ -18,10 +18,7 @@ describe("updateExpense", () => {
   });
 
   it("returns 0 when no rows matched", async () => {
-    const run = vi.fn(async () => ({ meta: { changes: 0 } }));
-    const bind = vi.fn(() => ({ run }));
-    const prepare = vi.fn(() => ({ bind }));
-    const db = { prepare } as unknown as D1Database;
+    const { db } = mockDb(0);
     const changes = await updateExpense(db, 999, 7, { amount_minor: 100 });
     expect(changes).toBe(0);
   });
@@ -51,10 +48,7 @@ describe("deleteExpense", () => {
   });
 
   it("returns 0 when no rows matched", async () => {
-    const run = vi.fn(async () => ({ meta: { changes: 0 } }));
-    const bind = vi.fn(() => ({ run }));
-    const prepare = vi.fn(() => ({ bind }));
-    const db = { prepare } as unknown as D1Database;
+    const { db } = mockDb(0);
     const changes = await deleteExpense(db, 999, 7);
     expect(changes).toBe(0);
   });
