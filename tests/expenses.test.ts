@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { updateExpense, deleteExpense, getUserTags } from "../src/db/expenses";
+import { updateExpense, deleteExpense, getUserTags, getRecentExpenses } from "../src/db/expenses";
 
 function mockDb() {
   const run = vi.fn(async () => ({ meta: { changes: 1 } }));
@@ -87,5 +87,35 @@ describe("getUserTags", () => {
 
     const tags = await getUserTags(db, 7);
     expect(tags).toEqual([]);
+  });
+});
+
+describe("getRecentExpenses", () => {
+  it("returns last N expenses with descriptions", async () => {
+    const results = [
+      { id: 42, amount_minor: 28000, currency: "SGD", category: "Food", occurred_at_utc: "2026-03-18T01:34:35Z", description: "Coffee" },
+      { id: 40, amount_minor: 2270, currency: "SGD", category: "Food", occurred_at_utc: "2026-03-17T05:04:56Z", description: "Lunch, Mr. Noodles" },
+    ];
+    const all = vi.fn(async () => ({ results }));
+    const bind = vi.fn(() => ({ all }));
+    const prepare = vi.fn(() => ({ bind }));
+    const db = { prepare } as unknown as D1Database;
+
+    const expenses = await getRecentExpenses(db, 1, 10);
+    expect(prepare).toHaveBeenCalledWith(expect.stringContaining("ORDER BY"));
+    expect(bind).toHaveBeenCalledWith(1, 10);
+    expect(expenses).toHaveLength(2);
+    expect(expenses[0].id).toBe(42);
+    expect(expenses[0].description).toBe("Coffee");
+  });
+
+  it("returns empty array when no expenses", async () => {
+    const all = vi.fn(async () => ({ results: [] }));
+    const bind = vi.fn(() => ({ all }));
+    const prepare = vi.fn(() => ({ bind }));
+    const db = { prepare } as unknown as D1Database;
+
+    const expenses = await getRecentExpenses(db, 1, 10);
+    expect(expenses).toEqual([]);
   });
 });

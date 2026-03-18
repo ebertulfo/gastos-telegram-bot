@@ -128,6 +128,36 @@ export async function deleteExpense(db: D1Database, expenseId: number, userId: n
     return result.meta.changes;
 }
 
+export type RecentExpense = {
+  id: number;
+  amount_minor: number;
+  currency: string;
+  category: string;
+  occurred_at_utc: string;
+  description: string | null;
+};
+
+export async function getRecentExpenses(
+  db: D1Database,
+  userId: number,
+  limit: number = 10
+): Promise<RecentExpense[]> {
+  const { results } = await db.prepare(
+    `SELECT e.id, e.amount_minor, e.currency, e.category, e.occurred_at_utc,
+            COALESCE(JSON_EXTRACT(pr.parsed_json, '$.description'), se.text_raw) as description
+     FROM expenses e
+     LEFT JOIN parse_results pr ON pr.source_event_id = e.source_event_id
+     LEFT JOIN source_events se ON e.source_event_id = se.id
+     WHERE e.user_id = ?
+     ORDER BY e.created_at_utc DESC
+     LIMIT ?`
+  )
+    .bind(userId, limit)
+    .all<RecentExpense>();
+
+  return results ?? [];
+}
+
 export async function getUserTags(db: D1Database, userId: number): Promise<string[]> {
     const { results } = await db.prepare(
         `SELECT tags FROM expenses WHERE user_id = ? AND tags != '[]'`
