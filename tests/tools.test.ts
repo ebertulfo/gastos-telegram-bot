@@ -425,6 +425,16 @@ describe("createAgentTools", () => {
     expect(result).toContain("not yet supported");
   });
 
+  it("delete_expense returns failure when expense not found", async () => {
+    const { deleteExpense } = await import("../src/db/expenses");
+    vi.mocked(deleteExpense).mockResolvedValueOnce(0);
+
+    const tools = createAgentTools(createMockEnv(), userId, 12345, timezone, currency);
+    const deleteTool = tools[2] as any;
+    const result = await deleteTool.execute({ expense_id: 999 });
+    expect(result).toContain("not found");
+  });
+
   it("edit_expense returns nothing-to-update when all inputs null", async () => {
     const tools = createAgentTools(createMockEnv(), userId, 12345, timezone, currency);
     const editTool = tools[1] as any;

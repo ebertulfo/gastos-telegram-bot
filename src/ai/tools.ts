@@ -147,7 +147,10 @@ export function createAgentTools(env: Env, userId: number, telegramId: number, t
             expense_id: z.number().describe("The ID of the expense to delete"),
         }),
         execute: async (input) => {
-            await deleteExpense(env.DB, input.expense_id, userId);
+            const changes = await deleteExpense(env.DB, input.expense_id, userId);
+            if (changes === 0) {
+                return `Expense #${input.expense_id} not found or doesn't belong to you`;
+            }
             return `Deleted expense #${input.expense_id}`;
         },
     });
