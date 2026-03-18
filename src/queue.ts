@@ -3,6 +3,7 @@ import { OpenAIProvider } from "@openai/agents-openai";
 import type { AgentInputItem } from "@openai/agents";
 import { createGastosAgent } from "./ai/agent";
 import { D1Session } from "./ai/session";
+import { getRecentExpenses } from "./db/expenses";
 import { transcribeR2Audio } from "./ai/openai";
 import { sendTelegramChatMessage, sendChatAction } from "./telegram/messages";
 import { StreamingReplyManager, getToolStatusText } from "./telegram/streaming";
@@ -76,7 +77,7 @@ async function processMessage(
   // 2. Configure OpenAI SDK with API key from Workers env (no process.env on Workers)
   setDefaultModelProvider(new OpenAIProvider({ apiKey: env.OPENAI_API_KEY, useResponses: false }));
 
-  // 4. Pre-process media into agent input
+  // 3. Pre-process media into agent input
   let agentInput: string | AgentInputItem[];
 
   if (body.mediaType === "voice" && body.r2ObjectKey) {
@@ -119,8 +120,18 @@ async function processMessage(
     agentInput = body.text ?? "";
   }
 
+  // 4. Fetch recent expenses for agent context (prevents hallucinated IDs on edit/delete)
+  const recentExpenses = await getRecentExpenses(env.DB, userId, 10);
+  const recentExpensesContext = recentExpenses.length > 0
+    ? recentExpenses.map(e => {
+        const date = new Date(e.occurred_at_utc).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+        const amount = (e.amount_minor / 100).toFixed(2);
+        return `#${e.id} ${date} — ${e.currency} ${amount} — ${e.description ?? "Unknown"} (${e.category})`;
+      }).join("\n")
+    : undefined;
+
   // 5. Create agent and session
-  const agent = createGastosAgent(env, userId, telegramId, timezone, currency);
+  const agent = createGastosAgent(env, userId, telegramId, timezone, currency, recentExpensesContext);
   const session = new D1Session(env.DB, userId);
 
   // 6. Run the agent (streaming)
@@ -174,7 +185,7 @@ async function processMessage(
 
   if (!result) return;
 
-  // 7. Increment token quota from actual usage
+  // 7. Increment token quota
   const totalTokens = result.rawResponses.reduce(
     (sum: number, r: any) => sum + (r.usage?.totalTokens ?? 0),
     0,
@@ -185,7 +196,7 @@ async function processMessage(
     });
   }
 
-  // 8. Finalize streaming reply (replaces old sendTelegramChatMessage step)
+  // 8. Finalize streaming reply
   const reply = result.finalOutput || "";
   await tracer.span(traceId, "telegram.send_reply", userId, async () => {
     await manager.finalize(reply);

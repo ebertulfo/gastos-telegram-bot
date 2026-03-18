@@ -62,9 +62,9 @@ export async function updateExpense(
     expenseId: number,
     userId: number,
     updates: Record<string, unknown>
-): Promise<void> {
+): Promise<number> {
     const keys = Object.keys(updates);
-    if (keys.length === 0) return;
+    if (keys.length === 0) return 0;
 
     for (const key of keys) {
       if (!ALLOWED_UPDATE_COLUMNS.has(key)) {
@@ -77,9 +77,11 @@ export async function updateExpense(
 
     const query = `UPDATE expenses SET ${setClauses.join(", ")} WHERE id = ? AND user_id = ?`;
 
-    await db.prepare(query)
+    const result = await db.prepare(query)
         .bind(...bindings)
         .run();
+
+    return result.meta.changes;
 }
 
 export async function insertExpense(
@@ -116,12 +118,44 @@ export async function insertExpense(
   return result.meta.last_row_id as number;
 }
 
-export async function deleteExpense(db: D1Database, expenseId: number, userId: number): Promise<void> {
-    await db.prepare(
+export async function deleteExpense(db: D1Database, expenseId: number, userId: number): Promise<number> {
+    const result = await db.prepare(
         `DELETE FROM expenses WHERE id = ? AND user_id = ?`
     )
         .bind(expenseId, userId)
         .run();
+
+    return result.meta.changes;
+}
+
+export type RecentExpense = {
+  id: number;
+  amount_minor: number;
+  currency: string;
+  category: string;
+  occurred_at_utc: string;
+  description: string | null;
+};
+
+export async function getRecentExpenses(
+  db: D1Database,
+  userId: number,
+  limit: number = 10
+): Promise<RecentExpense[]> {
+  const { results } = await db.prepare(
+    `SELECT e.id, e.amount_minor, e.currency, e.category, e.occurred_at_utc,
+            COALESCE(JSON_EXTRACT(pr.parsed_json, '$.description'), se.text_raw) as description
+     FROM expenses e
+     LEFT JOIN parse_results pr ON pr.source_event_id = e.source_event_id
+     LEFT JOIN source_events se ON e.source_event_id = se.id
+     WHERE e.user_id = ?
+     ORDER BY e.created_at_utc DESC
+     LIMIT ?`
+  )
+    .bind(userId, limit)
+    .all<RecentExpense>();
+
+  return results ?? [];
 }
 
 export async function getUserTags(db: D1Database, userId: number): Promise<string[]> {

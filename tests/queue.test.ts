@@ -71,6 +71,11 @@ vi.mock("../src/ai/openai", () => ({
   transcribeR2Audio: vi.fn().mockResolvedValue("coffee 5 dollars"),
 }));
 
+// Mock expenses DB (getRecentExpenses is called to build agent context)
+vi.mock("../src/db/expenses", () => ({
+  getRecentExpenses: vi.fn().mockResolvedValue([]),
+}));
+
 function createEnv(): Env {
   return {
     APP_ENV: "test",

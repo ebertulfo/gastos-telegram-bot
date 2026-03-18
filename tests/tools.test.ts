@@ -14,8 +14,8 @@ vi.mock("@openai/agents", () => ({
 // Mock DB functions
 vi.mock("../src/db/expenses", () => ({
   insertExpense: vi.fn().mockResolvedValue(1),
-  updateExpense: vi.fn().mockResolvedValue(undefined),
-  deleteExpense: vi.fn().mockResolvedValue(undefined),
+  updateExpense: vi.fn().mockResolvedValue(1),
+  deleteExpense: vi.fn().mockResolvedValue(1),
   getExpenses: vi.fn().mockResolvedValue([]),
 }));
 
@@ -394,6 +394,77 @@ describe("createAgentTools", () => {
     });
     expect(result).toContain("#7");
     expect(result).toContain("amount");
+  });
+
+  it("edit_expense returns failure when expense not found", async () => {
+    const { updateExpense } = await import("../src/db/expenses");
+    vi.mocked(updateExpense).mockResolvedValueOnce(0);
+
+    const tools = createAgentTools(createMockEnv(), userId, 12345, timezone, currency);
+    const editTool = tools[1] as any;
+    const result = await editTool.execute({
+      expense_id: 999,
+      amount: 5,
+      category: null,
+      description: null,
+      occurred_at: null,
+    });
+    expect(result).toContain("not found");
+  });
+
+  it("edit_expense returns not-supported when only description provided", async () => {
+    const tools = createAgentTools(createMockEnv(), userId, 12345, timezone, currency);
+    const editTool = tools[1] as any;
+    const result = await editTool.execute({
+      expense_id: 42,
+      amount: null,
+      category: null,
+      description: "Updated name",
+      occurred_at: null,
+    });
+    expect(result).toContain("not yet supported");
+  });
+
+  it("delete_expense returns failure when expense not found", async () => {
+    const { deleteExpense } = await import("../src/db/expenses");
+    vi.mocked(deleteExpense).mockResolvedValueOnce(0);
+
+    const tools = createAgentTools(createMockEnv(), userId, 12345, timezone, currency);
+    const deleteTool = tools[2] as any;
+    const result = await deleteTool.execute({ expense_id: 999 });
+    expect(result).toContain("not found");
+  });
+
+  it("edit_expense returns nothing-to-update when all inputs null", async () => {
+    const tools = createAgentTools(createMockEnv(), userId, 12345, timezone, currency);
+    const editTool = tools[1] as any;
+    const result = await editTool.execute({
+      expense_id: 42,
+      amount: null,
+      category: null,
+      description: null,
+      occurred_at: null,
+    });
+    expect(result).toContain("Nothing to update");
+  });
+
+  it("log_expense skips duplicate in same run", async () => {
+    const tools = createAgentTools(createMockEnv(), userId, 12345, timezone, currency);
+    const logTool = tools[0] as any;
+
+    const input = {
+      amount: 12.5,
+      currency: "PHP",
+      description: "Lunch",
+      category: "Food",
+      tags: [],
+    };
+
+    const first = await logTool.execute(input);
+    const second = await logTool.execute(input);
+
+    expect(first).toContain("Logged");
+    expect(second).toContain("Already logged");
   });
 
   it("log_expense defaults to now when occurred_at is not provided", async () => {

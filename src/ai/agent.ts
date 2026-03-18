@@ -5,7 +5,7 @@ import { createAgentTools } from "./tools";
 /**
  * Builds the system prompt for the Gastos agent with user-specific context.
  */
-export function buildSystemPrompt(timezone: string, currency: string): string {
+export function buildSystemPrompt(timezone: string, currency: string, recentExpensesContext?: string): string {
     const today = new Date().toLocaleDateString("en-US", {
         timeZone: timezone,
         weekday: "long",
@@ -14,7 +14,7 @@ export function buildSystemPrompt(timezone: string, currency: string): string {
         day: "numeric",
     });
 
-    return `You are Gastos, an intelligent financial assistant on Telegram. You help users track expenses and understand their spending.
+    const prompt = `You are Gastos, an intelligent financial assistant on Telegram. You help users track expenses and understand their spending.
 
 CAPABILITIES:
 - Log expenses when users mention spending (use log_expense tool)
@@ -51,6 +51,27 @@ CATEGORIES:
 - Use "Transport" for taxis, Grab/Uber rides, MRT/bus, fuel, parking, tolls.
 - Use "Health" for clinics, medicine, pharmacy, gym, dental, optical.
 - Only use "Other" when the item truly doesn't fit any named category.
+
+AMOUNT HANDLING:
+- When the user gives a whole number for a clearly low-cost item (e.g. "coffee 280", "bread 150"), consider whether they mean the decimal form (2.80, 1.50). Factor in the user's default currency — PHP 280 for coffee is reasonable, but SGD 280 is not.
+- If ambiguous, ask: "Did you mean ${currency} 2.80 or ${currency} 280.00?"
+- Never silently assume — if the amount seems unusual for the item and currency, ask once.
+
+DUPLICATE PREVENTION:
+- NEVER call log_expense twice for the same item in one message. If the user says "22.70, lunch, Mr. Noodles", that is ONE expense — call log_expense exactly once.
+- Only call log_expense multiple times when the user explicitly lists multiple distinct items (e.g. "coffee 5 and lunch 12").
+
+AMBIGUOUS AMOUNTS:
+- When a message contains multiple numbers and it's unclear which are amounts vs part of a name, ASK before logging.
+  Example: "100 plus 1.50" — ask: "Is '100 Plus' the item name with a price of 1.50, or are you logging two expenses?"
+- Only log multiple expenses when they are clearly distinct items (e.g. "coffee 5 and lunch 12").
+- If a message has amounts but no clear description of what was purchased, ask what it was for before logging.
+
+LATEST/RECENT QUERIES:
+- When the user asks for "latest", "recent", or "last" transactions without specifying a period, default to "thisweek". If this week is empty, auto-expand to last week. Do NOT ask which period.
+
+LANGUAGE:
+- ALWAYS respond in English regardless of what language the user writes in or what foreign words appear in expense descriptions.
 
 RESPONSE FORMAT:
 Follow these templates for consistent output. Do not deviate from these patterns.
@@ -95,19 +116,25 @@ TONE:
 - Use consistent dash bullets (—) for lists, not mixed bullets
 - Do not end short confirmations with periods — feels more natural in chat
 - Keep follow-up answers anchored to the previous context. If the user asks "how about yesterday?", carry over the previous filter`;
+
+    if (recentExpensesContext) {
+        return `${prompt}\n\nRECENT EXPENSES (reference these IDs for edit/delete — never show IDs to user):\n${recentExpensesContext}`;
+    }
+
+    return prompt;
 }
 
 /**
  * Creates a configured Gastos SDK Agent with tools bound to the authenticated user.
  * The agent handles both expense logging and financial Q&A in a unified flow.
  */
-export function createGastosAgent(env: Env, userId: number, telegramId: number, timezone: string, currency: string) {
+export function createGastosAgent(env: Env, userId: number, telegramId: number, timezone: string, currency: string, recentExpensesContext?: string) {
     const tools = createAgentTools(env, userId, telegramId, timezone, currency);
 
     return new Agent({
         name: "gastos",
         model: "gpt-5-mini",
-        instructions: buildSystemPrompt(timezone, currency),
+        instructions: buildSystemPrompt(timezone, currency, recentExpensesContext),
         tools,
     });
 }
