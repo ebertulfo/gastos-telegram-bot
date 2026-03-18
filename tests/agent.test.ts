@@ -113,6 +113,32 @@ describe("buildSystemPrompt", () => {
         const prompt = buildSystemPrompt("UTC", "USD");
         expect(prompt).not.toContain("RECENT EXPENSES");
     });
+
+    it("includes amount handling rules", () => {
+        const prompt = buildSystemPrompt("UTC", "USD");
+        expect(prompt).toContain("AMOUNT HANDLING");
+    });
+
+    it("includes duplicate prevention rules", () => {
+        const prompt = buildSystemPrompt("UTC", "USD");
+        expect(prompt).toContain("DUPLICATE PREVENTION");
+    });
+
+    it("includes ambiguous amounts rules", () => {
+        const prompt = buildSystemPrompt("UTC", "USD");
+        expect(prompt).toContain("AMBIGUOUS AMOUNTS");
+    });
+
+    it("includes latest/recent query default", () => {
+        const prompt = buildSystemPrompt("UTC", "USD");
+        expect(prompt).toContain("LATEST/RECENT");
+    });
+
+    it("includes language rule", () => {
+        const prompt = buildSystemPrompt("UTC", "USD");
+        expect(prompt).toContain("LANGUAGE");
+        expect(prompt).toContain("English");
+    });
 });
 
 describe("createGastosAgent", () => {
