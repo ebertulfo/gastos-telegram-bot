@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { AgentTraceProcessor } from "../src/ai/agent-trace-processor";
 import type { ITracer } from "../src/tracer";
-import type { Span, SpanData, GenerationSpanData, FunctionSpanData } from "@openai/agents-core";
+import type { Span, SpanData, GenerationSpanData, FunctionSpanData, ResponseSpanData } from "@openai/agents-core";
 
 /** Minimal mock tracer that collects record() calls */
 function createMockTracer() {
@@ -118,6 +118,76 @@ describe("AgentTraceProcessor", () => {
 
       expect(mockTracer.recorded[0].metadata?.turn).toBe(0);
       expect(mockTracer.recorded[1].metadata?.turn).toBe(0);
+    });
+  });
+
+  describe("response spans → ai.turn (Responses API)", () => {
+    it("records ai.turn from response span with model and usage from _response", async () => {
+      processor.setContext("trace-1", 42, mockTracer.tracer);
+
+      const span = mockSpan<ResponseSpanData>(
+        {
+          type: "response",
+          response_id: "resp_abc123",
+          _response: {
+            model: "gpt-5-mini",
+            usage: { input_tokens: 400, output_tokens: 80 },
+          },
+        },
+        "2026-03-13T10:00:00.000Z",
+        "2026-03-13T10:00:02.500Z",
+      );
+      await processor.onSpanEnd(span);
+
+      expect(mockTracer.recorded).toHaveLength(1);
+      const rec = mockTracer.recorded[0];
+      expect(rec.spanName).toBe("ai.turn");
+      expect(rec.durationMs).toBe(2500);
+      expect(rec.metadata).toEqual({
+        turn: 0,
+        model: "gpt-5-mini",
+        inputTokens: 400,
+        outputTokens: 80,
+      });
+    });
+
+    it("handles response span without _response gracefully", async () => {
+      processor.setContext("trace-1", 42, mockTracer.tracer);
+
+      const span = mockSpan<ResponseSpanData>(
+        { type: "response", response_id: "resp_abc123" },
+        "2026-03-13T10:00:00.000Z",
+        "2026-03-13T10:00:01.000Z",
+      );
+      await processor.onSpanEnd(span);
+
+      expect(mockTracer.recorded).toHaveLength(1);
+      expect(mockTracer.recorded[0].metadata).toEqual({
+        turn: 0,
+        model: "unknown",
+        inputTokens: 0,
+        outputTokens: 0,
+      });
+    });
+
+    it("shares turn counter with generation spans", async () => {
+      processor.setContext("trace-1", 42, mockTracer.tracer);
+
+      const genSpan = mockSpan<GenerationSpanData>(
+        { type: "generation", model: "gpt-5-mini" },
+        "2026-03-13T10:00:00.000Z",
+        "2026-03-13T10:00:01.000Z",
+      );
+      const respSpan = mockSpan<ResponseSpanData>(
+        { type: "response", _response: { model: "gpt-5-mini" } },
+        "2026-03-13T10:00:02.000Z",
+        "2026-03-13T10:00:03.000Z",
+      );
+      await processor.onSpanEnd(genSpan);
+      await processor.onSpanEnd(respSpan);
+
+      expect(mockTracer.recorded[0].metadata?.turn).toBe(0);
+      expect(mockTracer.recorded[1].metadata?.turn).toBe(1);
     });
   });
 

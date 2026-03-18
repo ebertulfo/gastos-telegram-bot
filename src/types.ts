@@ -76,4 +76,5 @@ export type ParseQueueMessage = {
   text?: string;
   r2ObjectKey?: string;
   mediaType?: "photo" | "voice";
+  sourceEventId?: number;
 };
