@@ -9,17 +9,28 @@ function mockDb() {
 }
 
 describe("updateExpense", () => {
-  it("updates with user_id guard", async () => {
+  it("updates with user_id guard and returns changes count", async () => {
     const { db, prepare, bind } = mockDb();
-    await updateExpense(db, 42, 7, { amount_minor: 1500 });
+    const changes = await updateExpense(db, 42, 7, { amount_minor: 1500 });
     expect(prepare).toHaveBeenCalledWith(expect.stringContaining("user_id"));
     expect(bind).toHaveBeenCalledWith(1500, 42, 7);
+    expect(changes).toBe(1);
   });
 
-  it("no-ops on empty updates", async () => {
+  it("returns 0 when no rows matched", async () => {
+    const run = vi.fn(async () => ({ meta: { changes: 0 } }));
+    const bind = vi.fn(() => ({ run }));
+    const prepare = vi.fn(() => ({ bind }));
+    const db = { prepare } as unknown as D1Database;
+    const changes = await updateExpense(db, 999, 7, { amount_minor: 100 });
+    expect(changes).toBe(0);
+  });
+
+  it("returns 0 on empty updates without querying", async () => {
     const { db, prepare } = mockDb();
-    await updateExpense(db, 42, 7, {});
+    const changes = await updateExpense(db, 42, 7, {});
     expect(prepare).not.toHaveBeenCalled();
+    expect(changes).toBe(0);
   });
 
   it("throws on invalid column names", async () => {

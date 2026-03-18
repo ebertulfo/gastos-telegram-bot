@@ -62,9 +62,9 @@ export async function updateExpense(
     expenseId: number,
     userId: number,
     updates: Record<string, unknown>
-): Promise<void> {
+): Promise<number> {
     const keys = Object.keys(updates);
-    if (keys.length === 0) return;
+    if (keys.length === 0) return 0;
 
     for (const key of keys) {
       if (!ALLOWED_UPDATE_COLUMNS.has(key)) {
@@ -77,9 +77,11 @@ export async function updateExpense(
 
     const query = `UPDATE expenses SET ${setClauses.join(", ")} WHERE id = ? AND user_id = ?`;
 
-    await db.prepare(query)
+    const result = await db.prepare(query)
         .bind(...bindings)
         .run();
+
+    return result.meta.changes;
 }
 
 export async function insertExpense(
