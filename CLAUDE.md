@@ -58,13 +58,15 @@
 | Simplify | - | - | `simplify` | `simplify` |
 | Audit context | - | - | `gastos:audit-context` | `gastos:audit-context` |
 | Revise CLAUDE.md | - | - | `claude-md-management:revise-claude-md` | `claude-md-management:revise-claude-md` |
-| Commit/PR | `commit-commands:commit` | `commit-commands:commit` | `commit-commands:commit-push-pr` | `commit-commands:commit-push-pr` |
-| Deploy | - | - | Prompt user | Prompt user |
+| PR | `commit-commands:commit-push-pr` | `commit-commands:commit-push-pr` | `commit-commands:commit-push-pr` | `commit-commands:commit-push-pr` |
+| Deploy | After merge | After merge | After merge | After merge |
 
 ### Enforcement
 - **State tracker** at `/tmp/gastos-workflow-state.json` tracks completed steps
 - **Block:** Commit/deploy blocked if `verify` step hasn't completed (tests must pass)
 - **Warn:** Commit warns if `review`, `simplify`, or `revise-claude-md` steps are missing
+- **No direct commits to main** — all changes go through PRs via `commit-commands:commit-push-pr`
+- **Deploy after merge** — run `npm run deploy` (and webapp deploy if webapp/ changed) after PR is merged to main
 - Never skip steps for the assessed size
 
 ### Specialist Subagents
