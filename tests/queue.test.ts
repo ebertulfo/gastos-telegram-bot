@@ -141,8 +141,9 @@ describe("queue processMessage via SDK agent", () => {
     );
   });
 
-  it("retries on agent failure", async () => {
+  it("notifies user and acks on agent failure (no silent retry-then-drop)", async () => {
     const { run } = await import("@openai/agents");
+    const { sendTelegramChatMessage } = await import("../src/telegram/messages");
     vi.mocked(run).mockRejectedValueOnce(new Error("model error"));
 
     const ack = vi.fn();
@@ -166,8 +167,14 @@ describe("queue processMessage via SDK agent", () => {
       { waitUntil: vi.fn() } as unknown as ExecutionContext,
     );
 
-    expect(retry).toHaveBeenCalledTimes(1);
-    expect(ack).not.toHaveBeenCalled();
+    // User gets notified instead of silent retry-then-drop
+    expect(ack).toHaveBeenCalled();
+    expect(retry).not.toHaveBeenCalled();
+    expect(sendTelegramChatMessage).toHaveBeenCalledWith(
+      env,
+      12345,
+      expect.stringContaining("wrong"),
+    );
   });
 
   it("sends quota exceeded message without running the agent", async () => {
@@ -205,6 +212,35 @@ describe("queue processMessage via SDK agent", () => {
       12345,
       expect.stringContaining("limit"),
     );
+  });
+
+  // Regression guard: useResponses:false causes gpt-5-mini to leak reasoning tokens
+  // into delta.content. The Responses API (default) separates them structurally.
+  it("does not configure OpenAIProvider with useResponses:false", async () => {
+    const { OpenAIProvider } = await import("@openai/agents-openai");
+
+    const ack = vi.fn();
+    const env = createEnv();
+
+    const body: ParseQueueMessage = {
+      userId: 7,
+      telegramId: 12345,
+      timezone: "Asia/Manila",
+      currency: "PHP",
+      tier: "free",
+      text: "coffee 150",
+    };
+
+    await handleParseQueueBatch(
+      {
+        messages: [{ body, ack, retry: vi.fn() }],
+      } as unknown as MessageBatch<ParseQueueMessage>,
+      env,
+      { waitUntil: vi.fn() } as unknown as ExecutionContext,
+    );
+
+    const callArgs = vi.mocked(OpenAIProvider).mock.calls[0][0] as Record<string, unknown>;
+    expect(callArgs).not.toHaveProperty("useResponses", false);
   });
 
   it("processes a voice message by transcribing first", async () => {

@@ -42,6 +42,15 @@ export class AgentTraceProcessor implements TracingProcessor {
         inputTokens: data.usage?.input_tokens ?? 0,
         outputTokens: data.usage?.output_tokens ?? 0,
       });
+    } else if (data.type === "response") {
+      // Responses API path: model and usage live inside _response
+      const resp = data._response as Record<string, any> | undefined;
+      tracer.record(traceId, "ai.turn", userId, durationMs, {
+        turn: this.turnCounter++,
+        model: resp?.model ?? "unknown",
+        inputTokens: resp?.usage?.input_tokens ?? 0,
+        outputTokens: resp?.usage?.output_tokens ?? 0,
+      });
     } else if (data.type === "function") {
       const truncate = (s: string) =>
         s.length > MAX_OUTPUT_LENGTH ? s.slice(0, MAX_OUTPUT_LENGTH) + "..." : s;

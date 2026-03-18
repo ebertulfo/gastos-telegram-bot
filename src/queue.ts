@@ -75,7 +75,7 @@ async function processMessage(
   }
 
   // 2. Configure OpenAI SDK with API key from Workers env (no process.env on Workers)
-  setDefaultModelProvider(new OpenAIProvider({ apiKey: env.OPENAI_API_KEY, useResponses: false }));
+  setDefaultModelProvider(new OpenAIProvider({ apiKey: env.OPENAI_API_KEY }));
 
   // 3. Pre-process media into agent input
   let agentInput: string | AgentInputItem[];
@@ -169,7 +169,11 @@ async function processMessage(
           return null;
         }
       } else {
-        throw err;
+        // Ack instead of retry: without a DLQ, retrying persistent errors leads to
+        // silent drops after 3 attempts. Prefer user notification over silent failure.
+        console.error("Agent run failed without state", { error: err instanceof Error ? err.message : String(err) });
+        await sendTelegramChatMessage(env, telegramId, "Something went wrong — try again");
+        return null;
       }
     }
   };
