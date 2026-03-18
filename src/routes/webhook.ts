@@ -174,7 +174,8 @@ export async function handleTelegramWebhook(c: Context<{ Bindings: Env }>) {
       tier: user.tier,
       text: update.message.text,
       r2ObjectKey: uploadedR2ObjectKey ?? undefined,
-      mediaType: update.message.photo ? "photo" : update.message.voice ? "voice" : undefined
+      mediaType: update.message.photo ? "photo" : update.message.voice ? "voice" : undefined,
+      sourceEventId: sourceEvent.id
     };
 
     if (!sourceEvent.duplicate) {
