@@ -60,6 +60,8 @@ export type Env = {
   OPENAI_API_KEY?: string;
   OPENAI_TRANSCRIBE_MODEL?: string;
   OPENAI_VISION_MODEL?: string;
+  GITHUB_TOKEN?: string;
+  GITHUB_REPO?: string;
   DB: D1Database;
   MEDIA_BUCKET: R2Bucket;
   INGEST_QUEUE: Queue<ParseQueueMessage>;
