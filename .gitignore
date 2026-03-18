@@ -8,3 +8,4 @@ coverage
 
 # Local secrets — NEVER commit
 .dev.vars
+.secrets
