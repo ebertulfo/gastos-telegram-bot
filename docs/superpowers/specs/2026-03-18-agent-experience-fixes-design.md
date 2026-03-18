@@ -37,16 +37,46 @@ RECENT EXPENSES (reference these IDs for edit/delete — never show IDs to user)
 
 This gives the agent ground-truth IDs from the database on every run. No session history gap matters. One extra indexed D1 query per run (cheap).
 
+**New function: `getRecentExpenses()`** in `src/db/expenses.ts`:
+
+```sql
+SELECT e.id, e.amount_minor, e.currency, e.category, e.occurred_at_utc,
+       COALESCE(JSON_EXTRACT(pr.parsed_json, '$.description'), se.text_raw) as description
+FROM expenses e
+LEFT JOIN parse_results pr ON pr.source_event_id = e.source_event_id
+LEFT JOIN source_events se ON e.source_event_id = se.id
+WHERE e.user_id = ?
+ORDER BY e.created_at_utc DESC
+LIMIT 10
+```
+
+Separate from the existing `getExpenses()` which does period-based filtering with heavier JOINs.
+
+**Signature changes:**
+- `buildSystemPrompt(timezone, currency, recentExpensesContext?: string)` — optional param, defaults to empty string. Existing callers and tests don't break.
+- `createGastosAgent(env, userId, telegramId, timezone, currency, recentExpensesContext?: string)` — forwards to `buildSystemPrompt`.
+- `queue.ts` calls `getRecentExpenses()` and formats the string before passing to `createGastosAgent`.
+
 **B. Return affected row count from `updateExpense` and `deleteExpense`**
 
-Change both from `Promise<void>` to `Promise<number>` (rows affected). The `edit_expense` and `delete_expense` tools check: if 0 rows affected, return "Expense not found — could not update" instead of a false success message.
+Change both from `Promise<void>` to `Promise<number>` using D1's `result.meta.changes` (not `rows_written` which includes index updates). The early return in `updateExpense` when `keys.length === 0` returns `0`.
+
+**Tool-level logic in `edit_expense`:**
+1. If no fields to update (all inputs null) — return "Nothing to update"
+2. Call `updateExpense`, check return value
+3. If 0 rows affected — return "Expense #X not found or doesn't belong to you"
+4. If > 0 — return success message
+
+Same pattern for `delete_expense`.
+
+**Note:** `edit_expense` accepts a `description` parameter but silently ignores it (description lives in `parse_results.parsed_json`, not `expenses`). This is a known limitation. With the new zero-rows check, the tool must check if updates is empty BEFORE calling `updateExpense` to avoid a false "not found" when only description was changed. For now, if only description is provided, return "Description editing is not yet supported" rather than a misleading error.
 
 ### Files Changed
 
-- `src/ai/agent.ts` — `buildSystemPrompt()` accepts recent expenses, adds `RECENT EXPENSES` section
-- `src/queue.ts` — fetch recent expenses before `run()`, pass to agent factory
-- `src/db/expenses.ts` — `updateExpense` and `deleteExpense` return `number`
-- `src/ai/tools.ts` — `edit_expense` and `delete_expense` check row count, report failure
+- `src/ai/agent.ts` — `buildSystemPrompt()` accepts optional recent expenses context; `createGastosAgent()` forwards it
+- `src/queue.ts` — fetch recent expenses before `run()`, format and pass to agent factory
+- `src/db/expenses.ts` — add `getRecentExpenses()`; `updateExpense` and `deleteExpense` return `number` via `meta.changes`
+- `src/ai/tools.ts` — `edit_expense` and `delete_expense` check row count, handle empty updates and description-only edge case
 - Tests for all of the above
 
 ---
@@ -64,8 +94,10 @@ Add a prompt rule for amount disambiguation:
 ```
 AMOUNT HANDLING:
 - When the user gives a whole number for a clearly low-cost item (e.g. "coffee 280", "bread 150"),
-  consider whether they mean the decimal form (2.80, 1.50). If ambiguous, ask: "Did you mean SGD 2.80 or SGD 280.00?"
-- Never silently assume — if the amount seems unusual for the item, ask once.
+  consider whether they mean the decimal form (2.80, 1.50). Factor in the user's default currency —
+  PHP 280 for coffee is reasonable, but SGD 280 is not.
+- If ambiguous, ask: "Did you mean [CUR] 2.80 or [CUR] 280.00?"
+- Never silently assume — if the amount seems unusual for the item and currency, ask once.
 ```
 
 ### Files Changed
@@ -162,6 +194,8 @@ LANGUAGE:
 - ALWAYS respond in English regardless of what language the user writes in or what foreign words appear in expense descriptions.
 ```
 
+Note: This is hardcoded for now. TODO: make language configurable per user (a `language` field on the users table) when we support non-English speakers.
+
 ### Files Changed
 
 - `src/ai/agent.ts` — add LANGUAGE section to system prompt
@@ -180,8 +214,21 @@ LANGUAGE:
 | `tests/expenses.test.ts` | Test return values from update/delete |
 | `tests/agent.test.ts` | Test that system prompt includes recent expenses section |
 
+## Test Cases
+
+- `edit_expense` returns failure message when `updateExpense` returns 0
+- `edit_expense` returns "nothing to update" when all inputs are null
+- `edit_expense` returns "description editing not yet supported" when only description is provided
+- `delete_expense` returns failure message when `deleteExpense` returns 0
+- `getRecentExpenses` returns last 10 expenses with descriptions
+- `buildSystemPrompt` includes RECENT EXPENSES section when context provided
+- `buildSystemPrompt` omits RECENT EXPENSES section when no context (backward compatible)
+- Each new prompt section is present in system prompt output
+
 ## Out of Scope
 
 - Storing full tool call history in D1Session (heavier fix, not needed if we inject from DB)
 - Changing the session schema
 - Amount validation heuristics in code (handled by prompt for now)
+- Description editing via `parse_results.parsed_json` (noted as TODO in edit_expense)
+- Per-user language configuration (noted as TODO)
