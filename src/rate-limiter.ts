@@ -26,3 +26,9 @@ export function checkRateLimit(env: Env, telegramUserId: number): Promise<boolea
 export function checkApiRateLimit(env: Env, userId: number): Promise<boolean> {
     return checkHourlyLimit(env, `ratelimit:api:${userId}`, MAX_API_REQUESTS_PER_HOUR);
 }
+
+const MAX_FEEDBACK_PER_HOUR = 10;
+
+export function checkFeedbackRateLimit(env: Env, telegramUserId: number): Promise<boolean> {
+    return checkHourlyLimit(env, `ratelimit:feedback:${telegramUserId}`, MAX_FEEDBACK_PER_HOUR);
+}

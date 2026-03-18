@@ -119,13 +119,13 @@ function createOnboardingEnv(initialUser: UserRow | null, opts?: { githubToken?:
     DB: { prepare } as unknown as D1Database,
     MEDIA_BUCKET: { put } as unknown as R2Bucket,
     VECTORIZE: {} as unknown as VectorizeIndex,
-    RATE_LIMITER: {} as unknown as KVNamespace,
+    RATE_LIMITER: { get: vi.fn().mockResolvedValue(null), put: vi.fn().mockResolvedValue(undefined) } as unknown as KVNamespace,
     INGEST_QUEUE: { send } as unknown as Queue<any>,
     ...(opts?.githubToken ? { GITHUB_TOKEN: opts.githubToken } : {}),
     ...(opts?.githubRepo ? { GITHUB_REPO: opts.githubRepo } : {}),
   };
 
-  return { env, send };
+  return { env, send, rateLimiterGet: (env.RATE_LIMITER as any).get };
 }
 
 function requestForText(text: string) {
@@ -311,6 +311,34 @@ describe("onboarding and command handling", () => {
     const [, requestInit] = fetchMock.mock.calls[0];
     const body = JSON.parse(String(requestInit?.body ?? "{}")) as { text?: string };
     expect(body.text).toContain("/feedback your message here");
+
+    fetchMock.mockRestore();
+  });
+
+  it("/feedback rate limited after 10 submissions per hour", async () => {
+    const app = createApp();
+    const { env, send, rateLimiterGet } = createOnboardingEnv({
+      id: 1,
+      telegram_user_id: 88,
+      telegram_chat_id: 77,
+      timezone: "Asia/Manila",
+      currency: "PHP",
+      onboarding_step: "completed"
+    });
+    // Simulate rate limit exceeded: KV returns "10" (at the limit)
+    rateLimiterGet.mockResolvedValue("10");
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+
+    const response = await app.fetch(requestForText("/feedback another message"), env);
+    const json = (await response.json()) as { status: string };
+
+    expect(response.status).toBe(200);
+    expect(json.status).toBe("handled");
+    expect(send).not.toHaveBeenCalled();
+
+    const [, requestInit] = fetchMock.mock.calls[0];
+    const body = JSON.parse(String(requestInit?.body ?? "{}")) as { text?: string };
+    expect(body.text).toContain("too many");
 
     fetchMock.mockRestore();
   });
