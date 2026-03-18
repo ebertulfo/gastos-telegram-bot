@@ -98,6 +98,70 @@ describe("createAgentTools", () => {
     expect(result).toContain("Food");
   });
 
+  it("log_expense uses original sourceEventId instead of creating a synthetic one", async () => {
+    const { insertExpense } = await import("../src/db/expenses");
+    const { createAgentSourceEvent } = await import("../src/db/source-events");
+    vi.mocked(insertExpense).mockClear();
+    vi.mocked(createAgentSourceEvent).mockClear();
+
+    const tools = createAgentTools(createMockEnv(), userId, 12345, timezone, currency, 42);
+    const logTool = tools[0] as any;
+    await logTool.execute({
+      amount: 17.22,
+      currency: "SGD",
+      description: "tada transport",
+      category: "Transport",
+      tags: ["tada"],
+    });
+
+    // Should use original sourceEventId (42), NOT create a synthetic one
+    expect(createAgentSourceEvent).not.toHaveBeenCalled();
+    expect(insertExpense).toHaveBeenCalledWith(
+      expect.anything(), // db
+      userId,
+      42, // original sourceEventId
+      1722,
+      "SGD",
+      "Transport",
+      ["tada"],
+      expect.any(String),
+      false,
+    );
+  });
+
+  it("log_expense creates synthetic sourceEventId only for 2nd+ expenses in same run", async () => {
+    const { insertExpense } = await import("../src/db/expenses");
+    const { createAgentSourceEvent } = await import("../src/db/source-events");
+    vi.mocked(insertExpense).mockClear();
+    vi.mocked(createAgentSourceEvent).mockClear();
+
+    const tools = createAgentTools(createMockEnv(), userId, 12345, timezone, currency, 42);
+    const logTool = tools[0] as any;
+
+    // First expense: should use original sourceEventId
+    await logTool.execute({
+      amount: 5,
+      currency: "SGD",
+      description: "coffee",
+      category: "Food",
+      tags: [],
+    });
+
+    // Second expense: should create synthetic sourceEventId
+    await logTool.execute({
+      amount: 12,
+      currency: "SGD",
+      description: "lunch",
+      category: "Food",
+      tags: [],
+    });
+
+    expect(createAgentSourceEvent).toHaveBeenCalledTimes(1); // only for 2nd
+    const calls = vi.mocked(insertExpense).mock.calls;
+    expect(calls[0][2]).toBe(42);  // 1st expense: original sourceEventId
+    expect(calls[1][2]).toBe(999); // 2nd expense: synthetic (mock returns 999)
+  });
+
   it("edit_expense execute returns confirmation string", async () => {
     const tools = createAgentTools(createMockEnv(), userId, 12345, timezone, currency);
     const editTool = tools[1] as any;

@@ -45,8 +45,9 @@ function validateOccurredAt(occurredAt: string | null, toolName: string): string
  * Factory that creates all agent tools with userId/env captured in closure.
  * The LLM cannot override these values — they come from the authenticated context.
  */
-export function createAgentTools(env: Env, userId: number, telegramId: number, timezone: string, currency: string) {
+export function createAgentTools(env: Env, userId: number, telegramId: number, timezone: string, currency: string, sourceEventId?: number) {
     const loggedThisRun = new Set<string>();
+    let originalSourceEventUsed = false;
 
     const logExpense = tool({
         name: "log_expense",
@@ -69,18 +70,25 @@ export function createAgentTools(env: Env, userId: number, telegramId: number, t
             const amountMinor = Math.round(input.amount * 100);
             const occurredAtUtc = validateOccurredAt(input.occurred_at, "log_expense") ?? new Date().toISOString();
 
-            // Create a real source event to avoid source_event_id=0 collision
-            const sourceEventId = await createAgentSourceEvent(
-                env.DB,
-                userId,
-                telegramId,
-                input.description,
-            );
+            // Reuse the original webhook source event for the first expense;
+            // create synthetic source events only for 2nd+ expenses (e.g. receipts with multiple items)
+            let eventId: number;
+            if (sourceEventId && !originalSourceEventUsed) {
+                eventId = sourceEventId;
+                originalSourceEventUsed = true;
+            } else {
+                eventId = await createAgentSourceEvent(
+                    env.DB,
+                    userId,
+                    telegramId,
+                    input.description,
+                );
+            }
 
             const expenseId = await insertExpense(
                 env.DB,
                 userId,
-                sourceEventId,
+                eventId,
                 amountMinor,
                 input.currency,
                 input.category,

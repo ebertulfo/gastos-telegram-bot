@@ -131,7 +131,7 @@ async function processMessage(
     : undefined;
 
   // 5. Create agent and session
-  const agent = createGastosAgent(env, userId, telegramId, timezone, currency, recentExpensesContext);
+  const agent = createGastosAgent(env, userId, telegramId, timezone, currency, recentExpensesContext, body.sourceEventId);
   const session = new D1Session(env.DB, userId);
 
   // 6. Run the agent (streaming)
