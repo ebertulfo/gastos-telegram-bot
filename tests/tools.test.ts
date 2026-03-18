@@ -448,6 +448,25 @@ describe("createAgentTools", () => {
     expect(result).toContain("Nothing to update");
   });
 
+  it("log_expense skips duplicate in same run", async () => {
+    const tools = createAgentTools(createMockEnv(), userId, 12345, timezone, currency);
+    const logTool = tools[0] as any;
+
+    const input = {
+      amount: 12.5,
+      currency: "PHP",
+      description: "Lunch",
+      category: "Food",
+      tags: [],
+    };
+
+    const first = await logTool.execute(input);
+    const second = await logTool.execute(input);
+
+    expect(first).toContain("Logged");
+    expect(second).toContain("Already logged");
+  });
+
   it("log_expense defaults to now when occurred_at is not provided", async () => {
     const { insertExpense } = await import("../src/db/expenses");
     vi.mocked(insertExpense).mockResolvedValueOnce(51);

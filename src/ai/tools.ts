@@ -46,6 +46,8 @@ function validateOccurredAt(occurredAt: string | null, toolName: string): string
  * The LLM cannot override these values — they come from the authenticated context.
  */
 export function createAgentTools(env: Env, userId: number, telegramId: number, timezone: string, currency: string) {
+    const loggedThisRun = new Set<string>();
+
     const logExpense = tool({
         name: "log_expense",
         description: "Log a new expense for the authenticated user. Use this when the user wants to record a purchase or payment.",
@@ -58,6 +60,12 @@ export function createAgentTools(env: Env, userId: number, telegramId: number, t
             occurred_at: z.string().nullable().default(null).describe("ISO date (YYYY-MM-DD) when the expense occurred, or null for today. Use this when the user says 'yesterday', 'last Monday', etc."),
         }),
         execute: async (input) => {
+            const dedupeKey = `${input.description}|${input.amount}|${input.currency}`;
+            if (loggedThisRun.has(dedupeKey)) {
+                return "Already logged this expense \u2014 skipping duplicate";
+            }
+            loggedThisRun.add(dedupeKey);
+
             const amountMinor = Math.round(input.amount * 100);
             const occurredAtUtc = validateOccurredAt(input.occurred_at, "log_expense") ?? new Date().toISOString();
 
