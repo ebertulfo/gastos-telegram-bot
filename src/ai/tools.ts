@@ -122,13 +122,21 @@ export function createAgentTools(env: Env, userId: number, telegramId: number, t
                     updates.occurred_at_utc = validatedDate;
                 }
             }
-            // Note: description is not stored on the expenses table directly.
-            // It lives in parse_results.parsed_json. We skip it here.
+            // Description is not stored on the expenses table (lives in parse_results.parsed_json)
+            if (Object.keys(updates).length === 0) {
+                if (input.description !== null) {
+                    return "Description editing is not yet supported";
+                }
+                return "Nothing to update";
+            }
 
-            await updateExpense(env.DB, input.expense_id, userId, updates);
+            const changes = await updateExpense(env.DB, input.expense_id, userId, updates);
+            if (changes === 0) {
+                return `Expense #${input.expense_id} not found or doesn't belong to you`;
+            }
 
-            const changes = Object.keys(updates).map(k => k.replace("_minor", "").replace("_utc", "")).join(", ");
-            return `Updated expense #${input.expense_id} \u2014 changed: ${changes || "nothing"}`;
+            const changedFields = Object.keys(updates).map(k => k.replace("_minor", "").replace("_utc", "")).join(", ");
+            return `Updated expense #${input.expense_id} \u2014 changed: ${changedFields}`;
         },
     });
 
