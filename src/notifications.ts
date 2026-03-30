@@ -112,15 +112,15 @@ export function getDueNotifications(user: UserForNotification, now: Date): Notif
 // Message building and sending
 // ---------------------------------------------------------------------------
 
-type CategoryTotal = { category: string; total_minor: number };
+type TagTotal = { tag: string; total_minor: number };
 
-async function getCategoryBreakdown(
+async function getTagBreakdown(
   env: Env,
   userId: number,
   startUtc: Date,
   endUtc: Date
-): Promise<{ totalMinor: number; count: number; categories: CategoryTotal[] }> {
-  const [summaryRow, catRows] = await Promise.all([
+): Promise<{ totalMinor: number; count: number; tags: TagTotal[] }> {
+  const [summaryRow, expenseRows] = await Promise.all([
     env.DB.prepare(
       `SELECT COALESCE(SUM(amount_minor),0) AS total_minor, COUNT(*) AS count
        FROM expenses
@@ -130,21 +130,34 @@ async function getCategoryBreakdown(
       .first<{ total_minor: number; count: number }>(),
 
     env.DB.prepare(
-      `SELECT category, COALESCE(SUM(amount_minor),0) AS total_minor
+      `SELECT tags, amount_minor
        FROM expenses
-       WHERE user_id = ? AND occurred_at_utc >= ? AND occurred_at_utc <= ?
-       GROUP BY category
-       ORDER BY total_minor DESC
-       LIMIT 5`
+       WHERE user_id = ? AND occurred_at_utc >= ? AND occurred_at_utc <= ?`
     )
       .bind(userId, startUtc.toISOString(), endUtc.toISOString())
-      .all<CategoryTotal>(),
+      .all<{ tags: string; amount_minor: number }>(),
   ]);
+
+  // Group by tag (an expense with multiple tags appears in each group)
+  const tagMap = new Map<string, number>();
+  for (const row of expenseRows.results ?? []) {
+    let tags: string[];
+    try { tags = JSON.parse(row.tags || "[]"); } catch { tags = []; }
+    if (tags.length === 0) tags = ["untagged"];
+    for (const t of tags) {
+      tagMap.set(t, (tagMap.get(t) ?? 0) + row.amount_minor);
+    }
+  }
+
+  const tags = Array.from(tagMap.entries())
+    .map(([tag, total_minor]) => ({ tag, total_minor }))
+    .sort((a, b) => b.total_minor - a.total_minor)
+    .slice(0, 5);
 
   return {
     totalMinor: summaryRow?.total_minor ?? 0,
     count: summaryRow?.count ?? 0,
-    categories: catRows.results ?? [],
+    tags,
   };
 }
 
@@ -152,9 +165,9 @@ function fmt(amountMinor: number, currency: string): string {
   return `${currency} ${(amountMinor / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function categoryLines(categories: CategoryTotal[], currency: string): string {
-  if (categories.length === 0) return "";
-  return categories.map((c) => `  • ${c.category}: ${fmt(c.total_minor, currency)}`).join("\n");
+function tagLines(tags: TagTotal[], currency: string): string {
+  if (tags.length === 0) return "";
+  return tags.map((t) => `  • ${t.tag}: ${fmt(t.total_minor, currency)}`).join("\n");
 }
 
 async function getAiInsight(env: Env, summaryText: string): Promise<string | null> {
@@ -249,7 +262,7 @@ async function sendNotification(
     contextLabel = "This year so far";
   }
 
-  const primary = await getCategoryBreakdown(env, user.id, primaryPeriod.startUtc, primaryPeriod.endUtc);
+  const primary = await getTagBreakdown(env, user.id, primaryPeriod.startUtc, primaryPeriod.endUtc);
 
   if (primary.count === 0) {
     await sendTelegramChatMessage(env, user.telegram_chat_id, buildEmptyStateMessage(type, now));
@@ -270,12 +283,12 @@ async function sendNotification(
             : "Last year";
 
   lines.push(`${primaryLabel}: ${fmt(primary.totalMinor, cur)} (${primary.count} expenses)`);
-  if (primary.categories.length > 0) {
-    lines.push(categoryLines(primary.categories, cur));
+  if (primary.tags.length > 0) {
+    lines.push(tagLines(primary.tags, cur));
   }
 
   if (contextPeriod && contextLabel) {
-    const context = await getCategoryBreakdown(env, user.id, contextPeriod.startUtc, contextPeriod.endUtc);
+    const context = await getTagBreakdown(env, user.id, contextPeriod.startUtc, contextPeriod.endUtc);
     if (context.count > 0) {
       lines.push("");
       lines.push(`${contextLabel}: ${fmt(context.totalMinor, cur)}`);

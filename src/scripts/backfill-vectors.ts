@@ -9,13 +9,13 @@ import { generateEmbedding } from "../ai/openai";
 export async function backfillVectorize(env: Env): Promise<{ total: number; embedded: number; errors: number }> {
     // Fetch all expenses with text_raw
     const { results } = await env.DB.prepare(
-        `SELECT e.source_event_id, e.user_id, e.category, e.tags, e.currency, se.text_raw
+        `SELECT e.source_event_id, e.user_id, e.description, e.tags, e.currency, se.text_raw
          FROM expenses e
          JOIN source_events se ON e.source_event_id = se.id
          WHERE se.text_raw IS NOT NULL AND se.text_raw != ''
          ORDER BY e.id DESC
          LIMIT 200`
-    ).all<{ source_event_id: number; user_id: number; category: string; tags: string; currency: string; text_raw: string }>();
+    ).all<{ source_event_id: number; user_id: number; description: string | null; tags: string; currency: string; text_raw: string }>();
 
     const expenses = results ?? [];
     let embedded = 0;
@@ -37,7 +37,6 @@ export async function backfillVectorize(env: Env): Promise<{ total: number; embe
                         metadata: {
                             user_id: exp.user_id,
                             expense_id: exp.source_event_id,
-                            category: exp.category ?? "Other",
                             tags: exp.tags ?? "[]",
                             currency: exp.currency ?? "",
                             raw_text: exp.text_raw
