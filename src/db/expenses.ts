@@ -101,8 +101,7 @@ export async function insertExpense(
     `INSERT INTO expenses (
        user_id, source_event_id, amount_minor, currency,
        description, tags, occurred_at_utc, status, created_at_utc
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(source_event_id) DO NOTHING`
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
     .bind(
       userId,
@@ -116,6 +115,10 @@ export async function insertExpense(
       new Date().toISOString()
     )
     .run();
+
+  if (result.meta.changes === 0) {
+    console.error("[insertExpense] Insert returned 0 changes", { userId, sourceEventId, amountMinor });
+  }
 
   return result.meta.last_row_id as number;
 }

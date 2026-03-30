@@ -60,8 +60,8 @@ export function EditDrawer({ expense, allTags, onClose, onSaved }: EditDrawerPro
       setReceiptUrl(null);
       setShowFullReceipt(false);
 
-      // Load receipt image if this is a photo expense
-      if (expense.r2_object_key) {
+      // Load receipt image only for photo expenses (voice also has r2_object_key for audio)
+      if (expense.message_type === "photo" && expense.r2_object_key) {
         fetchMediaBlobUrl(expense.source_event_id).then(setReceiptUrl);
       }
     }
