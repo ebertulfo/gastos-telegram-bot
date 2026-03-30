@@ -12,8 +12,22 @@ export default function App() {
   useEffect(() => {
     WebApp.ready();
     WebApp.expand();
-    // Always dark — matches iOS app design
     document.documentElement.classList.add("dark");
+
+    // Track keyboard height via visualViewport so fixed-position drawers
+    // can shift up above the keyboard (iOS doesn't resize the layout viewport)
+    const vv = window.visualViewport;
+    if (vv) {
+      const update = () => {
+        const keyboardHeight = window.innerHeight - vv.height;
+        document.documentElement.style.setProperty(
+          "--keyboard-offset",
+          `${Math.max(0, keyboardHeight)}px`
+        );
+      };
+      vv.addEventListener("resize", update);
+      return () => vv.removeEventListener("resize", update);
+    }
   }, []);
 
   // Back button for drill-down

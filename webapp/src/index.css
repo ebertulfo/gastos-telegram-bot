@@ -77,3 +77,11 @@
     font-size: 16px;
   }
 }
+
+/* Shift Vaul drawer above the iOS keyboard */
+[vaul-drawer] {
+  bottom: var(--keyboard-offset, 0px) !important;
+}
+[vaul-overlay] {
+  bottom: var(--keyboard-offset, 0px) !important;
+}
