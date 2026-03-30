@@ -14,20 +14,17 @@ export default function App() {
     WebApp.expand();
     document.documentElement.classList.add("dark");
 
-    // Track keyboard height via visualViewport so fixed-position drawers
-    // can shift up above the keyboard (iOS doesn't resize the layout viewport)
-    const vv = window.visualViewport;
-    if (vv) {
-      const update = () => {
-        const keyboardHeight = window.innerHeight - vv.height;
-        document.documentElement.style.setProperty(
-          "--keyboard-offset",
-          `${Math.max(0, keyboardHeight)}px`
-        );
-      };
-      vv.addEventListener("resize", update);
-      return () => vv.removeEventListener("resize", update);
-    }
+    // Track keyboard height via Telegram's viewportChanged event
+    // so fixed-position drawers shift above the keyboard on iOS
+    const handleViewport = () => {
+      const offset = WebApp.viewportStableHeight - WebApp.viewportHeight;
+      document.documentElement.style.setProperty(
+        "--keyboard-offset",
+        `${Math.max(0, offset)}px`
+      );
+    };
+    WebApp.onEvent("viewportChanged", handleViewport);
+    return () => WebApp.offEvent("viewportChanged", handleViewport);
   }, []);
 
   // Back button for drill-down
