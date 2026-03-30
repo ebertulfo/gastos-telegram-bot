@@ -4,7 +4,6 @@ import type { ExpenseWithDetails } from "../lib/types";
 import { formatAmountShort, parseTags } from "../lib/format";
 import { updateExpense, deleteExpense } from "../lib/api";
 import { TagInput } from "./TagInput";
-import { useKeyboardOpen } from "../hooks/useKeyboardOffset";
 
 type EditDrawerProps = {
   expense: ExpenseWithDetails | null;
@@ -38,7 +37,6 @@ function formatDateDisplay(dateStr: string): string {
 }
 
 export function EditDrawer({ expense, allTags, onClose, onSaved }: EditDrawerProps) {
-  const keyboardOpen = useKeyboardOpen();
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
   const [tags, setTags] = useState<string[]>([]);
@@ -110,21 +108,22 @@ export function EditDrawer({ expense, allTags, onClose, onSaved }: EditDrawerPro
   };
 
   return (
-    <Drawer.Root open={open} onOpenChange={handleOpen} repositionInputs={false}>
+    <Drawer.Root open={open} onOpenChange={handleOpen} direction="bottom">
       <Drawer.Portal>
         <Drawer.Overlay className="fixed inset-0 bg-black/50" />
         <Drawer.Content
-          className="fixed bottom-0 left-0 right-0 flex flex-col max-w-full"
-          style={{
-            background: "var(--bg-base)",
-            maxHeight: keyboardOpen ? "45vh" : "85dvh",
-            width: "100vw",
-            borderRadius: "var(--radius-xl) var(--radius-xl) 0 0",
-            transition: "max-height 0.2s ease-in-out",
-          }}
+          className="fixed inset-0 flex flex-col"
+          style={{ background: "var(--bg-base)" }}
         >
-          <div className="overflow-y-auto overflow-x-hidden px-4 pb-6 pt-3">
-            <div className="mx-auto mb-4 h-1 w-9 rounded-full" style={{ background: "var(--border-strong)" }} />
+          <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 pb-6 pt-3">
+            {/* Close handle */}
+            <div className="flex items-center justify-between mb-4">
+              <button onClick={onClose} className="text-sm font-medium" style={{ color: "var(--accent)" }}>
+                Close
+              </button>
+              <div className="h-1 w-9 rounded-full" style={{ background: "var(--border-strong)" }} />
+              <div className="w-10" />
+            </div>
 
             {expense && (
               <>
