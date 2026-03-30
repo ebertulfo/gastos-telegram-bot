@@ -1,41 +1,24 @@
 import { useState, useEffect } from "react";
 
 /**
- * Detects iOS keyboard height in Telegram Mini App WebView.
+ * Returns true when an input is focused (keyboard is likely open).
  *
- * Telegram's iOS WebView doesn't resize the viewport when the keyboard opens —
- * visualViewport, innerHeight, and WebApp.viewportHeight all stay constant.
- * So we use a hardcoded estimate based on device screen height.
+ * Telegram's iOS WebView doesn't resize the viewport when the keyboard
+ * opens, so we can't detect the keyboard height. Instead we just track
+ * whether an input is focused so the drawer can shrink its maxHeight.
  */
-function estimateKeyboardHeight(): number {
-  const h = window.screen.height;
-  if (h <= 667) return 260;  // iPhone SE
-  if (h <= 844) return 300;  // iPhone 12/13/14
-  if (h <= 932) return 340;  // iPhone Pro Max / Plus
-  return 320;
-}
-
-export function useKeyboardOffset() {
-  const [offset, setOffset] = useState(0);
+export function useKeyboardOpen() {
+  const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    const initialHeight = window.innerHeight;
-
     const onFocusIn = (e: FocusEvent) => {
-      const target = e.target as HTMLElement;
-      if (target.tagName !== "INPUT" && target.tagName !== "TEXTAREA" && target.tagName !== "SELECT") return;
-
-      // Wait for keyboard animation
-      setTimeout(() => {
-        const diff = initialHeight - window.innerHeight;
-        // If viewport actually shrank (non-Telegram), use real diff.
-        // Otherwise fall back to estimate (Telegram iOS WebView).
-        setOffset(diff > 60 ? diff : estimateKeyboardHeight());
-      }, 350);
+      const t = e.target as HTMLElement;
+      if (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT") {
+        setOpen(true);
+      }
     };
-
     const onFocusOut = () => {
-      setTimeout(() => setOffset(0), 100);
+      setTimeout(() => setOpen(false), 100);
     };
 
     document.addEventListener("focusin", onFocusIn);
@@ -46,5 +29,5 @@ export function useKeyboardOffset() {
     };
   }, []);
 
-  return offset;
+  return open;
 }
