@@ -11,19 +11,23 @@ type PeriodToggleProps = {
 
 export function PeriodToggle({ options, value, onChange }: PeriodToggleProps) {
   return (
-    <div className="flex rounded-lg p-0.5" style={{ background: "var(--surface)" }}>
+    <div
+      className="flex p-0.5"
+      style={{ background: "var(--bg-raised)", borderRadius: "var(--radius-md)" }}
+    >
       {options.map((opt) => {
         const active = opt.value === value;
         return (
           <button
             key={opt.value}
             onClick={() => onChange(opt.value)}
-            className="flex-1 rounded-md py-1.5 text-xs transition-all"
+            className="flex-1 py-1.5 text-xs transition-all"
             style={{
-              background: active ? "var(--background)" : "transparent",
-              color: active ? "var(--foreground)" : "var(--text-secondary)",
+              background: active ? "var(--bg-elevated)" : "transparent",
+              color: active ? "var(--text-primary)" : "var(--text-muted)",
               fontWeight: active ? 600 : 400,
-              boxShadow: active ? "0 1px 2px rgba(0,0,0,0.05)" : "none",
+              fontFamily: "var(--font-mono)",
+              borderRadius: "var(--radius-sm)",
             }}
           >
             {opt.label}

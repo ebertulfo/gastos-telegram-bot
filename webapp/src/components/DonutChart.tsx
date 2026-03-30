@@ -29,7 +29,7 @@ export function DonutChart({ segments, total, currency, size = 120 }: DonutChart
           cy={center}
           r={radius}
           fill="none"
-          stroke="var(--surface)"
+          stroke="var(--bg-raised)"
           strokeWidth={strokeWidth}
         />
         {/* Segments */}
@@ -60,7 +60,7 @@ export function DonutChart({ segments, total, currency, size = 120 }: DonutChart
           y={center - 4}
           textAnchor="middle"
           className="text-sm font-bold"
-          style={{ fill: "var(--foreground)" }}
+          style={{ fill: "var(--text-primary)", fontFamily: "var(--font-mono)" }}
         >
           {total}
         </text>
@@ -69,7 +69,7 @@ export function DonutChart({ segments, total, currency, size = 120 }: DonutChart
           y={center + 12}
           textAnchor="middle"
           className="text-[9px]"
-          style={{ fill: "var(--text-secondary)" }}
+          style={{ fill: "var(--text-muted)", fontFamily: "var(--font-mono)" }}
         >
           {currency}
         </text>

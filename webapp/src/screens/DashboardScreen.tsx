@@ -63,11 +63,11 @@ export function DashboardScreen() {
         </div>
       ) : error ? (
         <div className="py-12 text-center">
-          <p className="text-sm" style={{ color: "var(--text-secondary)" }}>{error}</p>
+          <p className="text-sm" style={{ color: "var(--text-muted)" }}>{error}</p>
           <button
             onClick={loadExpenses}
-            className="mt-3 rounded-lg px-4 py-2 text-sm font-medium"
-            style={{ background: "var(--accent)", color: "var(--accent-foreground)" }}
+            className="mt-3 px-4 py-2 text-sm font-medium"
+            style={{ background: "var(--accent)", color: "var(--bg-base)", borderRadius: "var(--radius-md)" }}
           >
             Retry
           </button>

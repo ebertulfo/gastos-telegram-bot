@@ -12,7 +12,7 @@ export function TransactionList({ expenses, onSelectExpense }: TransactionListPr
 
   if (expenses.length === 0) {
     return (
-      <div className="py-12 text-center text-sm" style={{ color: "var(--text-secondary)" }}>
+      <div className="py-12 text-center text-sm" style={{ color: "var(--text-muted)" }}>
         No expenses yet.
       </div>
     );
@@ -24,11 +24,11 @@ export function TransactionList({ expenses, onSelectExpense }: TransactionListPr
         <div key={group.label}>
           <div
             className="pb-1.5 pt-4 text-[11px] uppercase tracking-wider"
-            style={{ color: "var(--text-secondary)" }}
+            style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}
           >
             {group.label}
           </div>
-          <div className="flex flex-col divide-y [&>*+*]:border-[var(--border)]">
+          <div className="flex flex-col divide-y" style={{ borderColor: "var(--border-subtle)" }}>
             {(group.expenses as ExpenseWithDetails[]).map((expense) => (
               <TransactionRow
                 key={expense.id}
