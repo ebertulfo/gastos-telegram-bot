@@ -14,17 +14,18 @@ export default function App() {
     WebApp.expand();
     document.documentElement.classList.add("dark");
 
-    // Track keyboard height via Telegram's viewportChanged event
-    // so fixed-position drawers shift above the keyboard on iOS
-    const handleViewport = () => {
-      const offset = WebApp.viewportStableHeight - WebApp.viewportHeight;
-      document.documentElement.style.setProperty(
-        "--keyboard-offset",
-        `${Math.max(0, offset)}px`
-      );
+    // iOS Telegram WebView: keyboard overlaps content without resizing viewport.
+    // Scroll the focused input into view after keyboard animation completes.
+    const handleFocusIn = (e: FocusEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT") {
+        setTimeout(() => {
+          target.scrollIntoView({ block: "center", behavior: "smooth" });
+        }, 300);
+      }
     };
-    WebApp.onEvent("viewportChanged", handleViewport);
-    return () => WebApp.offEvent("viewportChanged", handleViewport);
+    document.addEventListener("focusin", handleFocusIn);
+    return () => document.removeEventListener("focusin", handleFocusIn);
   }, []);
 
   // Back button for drill-down
