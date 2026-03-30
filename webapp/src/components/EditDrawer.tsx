@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { Drawer } from "vaul";
 import type { ExpenseWithDetails } from "../lib/types";
-import { getCategoryConfig, getAllKnownCategories } from "../lib/categories";
 import { formatAmountShort, parseTags } from "../lib/format";
 import { updateExpense, deleteExpense } from "../lib/api";
 import { TagInput } from "./TagInput";
@@ -39,7 +38,7 @@ function formatDateDisplay(dateStr: string): string {
 
 export function EditDrawer({ expense, allTags, onClose, onSaved }: EditDrawerProps) {
   const [amount, setAmount] = useState("");
-  const [category, setCategory] = useState("");
+  const [description, setDescription] = useState("");
   const [tags, setTags] = useState<string[]>([]);
   const [date, setDate] = useState("");
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -51,7 +50,7 @@ export function EditDrawer({ expense, allTags, onClose, onSaved }: EditDrawerPro
   useEffect(() => {
     if (expense) {
       setAmount(formatAmountShort(expense.amount_minor));
-      setCategory(expense.category);
+      setDescription(expense.description || expense.text_raw || "");
       setTags(parseTags(expense.tags));
       setDate(toDateString(expense.occurred_at_utc));
       setShowDatePicker(false);
@@ -72,7 +71,7 @@ export function EditDrawer({ expense, allTags, onClose, onSaved }: EditDrawerPro
       await updateExpense(expense.id, {
         amount_minor: amountMinor,
         currency: expense.currency,
-        category,
+        description,
         tags,
         occurred_at_utc: date,
       });
@@ -96,7 +95,7 @@ export function EditDrawer({ expense, allTags, onClose, onSaved }: EditDrawerPro
     }
   };
 
-  const description = expense?.parsed_description || expense?.text_raw || "Unknown";
+  const displayDescription = expense?.description || expense?.text_raw || "Unknown";
   const sourceType = expense?.r2_object_key
     ? "photo"
     : expense?.text_raw
@@ -129,7 +128,7 @@ export function EditDrawer({ expense, allTags, onClose, onSaved }: EditDrawerPro
                 <div className="mb-5 flex items-start justify-between">
                   <div>
                     <div className="text-xl font-bold" style={{ color: "var(--foreground)" }}>
-                      {description}
+                      {displayDescription}
                     </div>
                     <div className="mt-0.5 text-xs" style={{ color: "var(--text-secondary)" }}>
                       Expense #{expense.id}
@@ -142,30 +141,22 @@ export function EditDrawer({ expense, allTags, onClose, onSaved }: EditDrawerPro
 
                 {/* Editable fields */}
                 <div className="flex flex-col gap-3.5 min-w-0">
-                  {/* Category */}
+                  {/* Description */}
                   <div>
                     <label className="mb-1 block text-[11px] uppercase tracking-wider" style={{ color: "var(--text-secondary)" }}>
-                      Category
+                      Description
                     </label>
-                    <select
-                      value={category}
-                      onChange={(e) => setCategory(e.target.value)}
+                    <input
+                      type="text"
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
                       className="w-full rounded-lg border px-3 py-2.5 text-sm"
                       style={{
                         background: "var(--surface-hover)",
                         borderColor: "var(--border)",
                         color: "var(--foreground)",
                       }}
-                    >
-                      {getAllKnownCategories().map((c) => {
-                        const cfg = getCategoryConfig(c);
-                        return (
-                          <option key={c} value={c}>
-                            {cfg.emoji} {c}
-                          </option>
-                        );
-                      })}
-                    </select>
+                    />
                   </div>
 
                   {/* Date */}

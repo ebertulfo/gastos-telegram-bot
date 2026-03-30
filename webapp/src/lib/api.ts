@@ -39,7 +39,7 @@ export async function updateExpense(
     data: {
         amount_minor: number;
         currency: string;
-        category?: string;
+        description?: string;
         tags?: string[];
         occurred_at_utc?: string;
     }

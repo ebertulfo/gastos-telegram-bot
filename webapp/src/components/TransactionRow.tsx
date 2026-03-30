@@ -1,5 +1,5 @@
 import type { ExpenseWithDetails } from "../lib/types";
-import { getCategoryConfig } from "../lib/categories";
+import { getTagConfig } from "../lib/categories";
 import { formatAmountShort, relativeTime, parseTags } from "../lib/format";
 
 type TransactionRowProps = {
@@ -8,10 +8,11 @@ type TransactionRowProps = {
 };
 
 export function TransactionRow({ expense, onClick }: TransactionRowProps) {
-  const cat = getCategoryConfig(expense.category);
   const tags = parseTags(expense.tags);
-  const description = expense.parsed_description || expense.text_raw || "Unknown";
+  const description = expense.description || expense.text_raw || "Unknown";
   const isReview = expense.status === "needs_review";
+  const primaryTag = tags[0];
+  const tagConfig = primaryTag ? getTagConfig(primaryTag) : null;
 
   return (
     <button
@@ -26,10 +27,13 @@ export function TransactionRow({ expense, onClick }: TransactionRowProps) {
     >
       <div className="flex items-center gap-2.5 min-w-0">
         <div
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sm"
-          style={{ background: isReview ? "var(--review-bg)" : "var(--surface)" }}
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[10px] font-medium"
+          style={{
+            background: isReview ? "var(--review-bg)" : "var(--surface)",
+            color: tagConfig?.color ?? "var(--text-secondary)",
+          }}
         >
-          {cat.emoji}
+          {primaryTag ? primaryTag.slice(0, 3) : "..."}
         </div>
         <div className="min-w-0">
           <div className="flex items-center gap-1.5">
@@ -52,8 +56,7 @@ export function TransactionRow({ expense, onClick }: TransactionRowProps) {
             className="flex items-center gap-1 text-[11px]"
             style={{ color: "var(--text-secondary)" }}
           >
-            <span>{expense.category}</span>
-            {tags.slice(0, 2).map((tag) => (
+            {tags.slice(0, 3).map((tag) => (
               <span
                 key={tag}
                 className="rounded px-1.5 py-0.5"
@@ -62,7 +65,7 @@ export function TransactionRow({ expense, onClick }: TransactionRowProps) {
                 #{tag}
               </span>
             ))}
-            <span style={{ color: "var(--border)" }}>·</span>
+            {tags.length > 0 && <span style={{ color: "var(--border)" }}>·</span>}
             <span>{relativeTime(expense.occurred_at_utc)}</span>
           </div>
         </div>

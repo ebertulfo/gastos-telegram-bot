@@ -1,6 +1,7 @@
 import { getRecentChatMessages } from "./db/chat-history";
 import { insertFeedback, getRecentErrorTraces, updateGithubIssueUrl } from "./db/feedback";
 import { getUserByTelegramUserId, updateUserOnboardingState, upsertUserForStart } from "./db/users";
+import { insertTagPreferences } from "./db/tag-preferences";
 import { createGithubIssue } from "./github";
 import { editTelegramMessageText, sendTelegramChatMessage, answerCallbackQuery } from "./telegram/messages";
 import { formatTotalsMessage, getTotalsForUserAndPeriod, parseTotalsPeriod } from "./totals";
@@ -23,6 +24,11 @@ const CURRENCY_TO_DEFAULT_TIMEZONE: Record<string, string> = {
   USD: "America/New_York",
   EUR: "Europe/Berlin"
 };
+
+const DEFAULT_TAGS = [
+  "food", "transport", "groceries", "shopping", "coffee",
+  "entertainment", "health", "bills", "travel", "subscriptions"
+] as const;
 
 export async function handleOnboardingOrCommand(env: Env, update: TelegramUpdate, ctx?: ExecutionContext): Promise<boolean> {
   const message = update.message;
@@ -184,7 +190,7 @@ export async function handleOnboardingOrCommand(env: Env, update: TelegramUpdate
     if (callbackQuery?.data?.startsWith("cur:")) {
       currency = callbackQuery.data.slice(4);
       if (messageId) {
-        await editTelegramMessageText(env, chatId, messageId, `✅ Currency set to: ${currency}`);
+        await editTelegramMessageText(env, chatId, messageId, `Currency set to: ${currency}`);
       }
       await answerCallbackQuery(env, callbackQuery.id);
     } else if (text) {
@@ -204,11 +210,69 @@ export async function handleOnboardingOrCommand(env: Env, update: TelegramUpdate
     await updateUserOnboardingState(env, user.id, {
       currency,
       timezone: suggestedTimezone,
-      onboardingStep: "completed"
+      onboardingStep: "awaiting_tags"
     });
 
-    await sendOnboardingComplete(env, chatId, suggestedTimezone, currency);
+    await sendTagSelectionPrompt(env, chatId);
     return true;
+  }
+
+  if (user.onboarding_step === "awaiting_tags") {
+    // Handle tag toggle callbacks
+    if (callbackQuery?.data?.startsWith("tag:")) {
+      const tag = callbackQuery.data.slice(4);
+
+      if (tag === "done" || tag === "skip") {
+        // Finalize tag selection
+        const selectedTags = parseSelectedTagsFromMessage(callbackQuery.message);
+
+        if (tag === "done" && selectedTags.length > 0) {
+          await insertTagPreferences(env.DB, user.id, selectedTags, "onboarding");
+        }
+
+        await updateUserOnboardingState(env, user.id, {
+          onboardingStep: "completed"
+        });
+
+        if (messageId) {
+          const tagSummary = selectedTags.length > 0
+            ? `Tags: ${selectedTags.join(", ")}`
+            : "No tags selected — Gastos will learn as you go";
+          await editTelegramMessageText(env, chatId, messageId, tagSummary);
+        }
+        await answerCallbackQuery(env, callbackQuery.id);
+        await sendOnboardingComplete(env, chatId);
+        return true;
+      }
+
+      // Toggle tag selection — update the keyboard
+      await answerCallbackQuery(env, callbackQuery.id);
+      if (messageId) {
+        const currentSelected = parseSelectedTagsFromMessage(callbackQuery.message);
+        const isSelected = currentSelected.includes(tag);
+        const newSelected = isSelected
+          ? currentSelected.filter(t => t !== tag)
+          : [...currentSelected, tag];
+
+        await editTelegramMessageText(
+          env, chatId, messageId,
+          buildTagSelectionText(newSelected),
+          buildTagKeyboard(newSelected)
+        );
+      }
+      return true;
+    }
+
+    // Text input during tag selection — skip to completion
+    if (text) {
+      await updateUserOnboardingState(env, user.id, {
+        onboardingStep: "completed"
+      });
+      await sendOnboardingComplete(env, chatId);
+      return true;
+    }
+
+    return false;
   }
 
   return false;
@@ -223,15 +287,59 @@ function normalizeCurrency(input: string): string | null {
   return currency;
 }
 
+function buildTagSelectionText(selectedTags: string[]): string {
+  if (selectedTags.length === 0) {
+    return "Pick the tags you use most — or skip and Gastos will learn as you go.";
+  }
+  return `Selected: ${selectedTags.join(", ")}\n\nTap to toggle, then hit Done.`;
+}
+
+function buildTagKeyboard(selectedTags: string[]): { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } {
+  const row1 = DEFAULT_TAGS.slice(0, 5).map(tag => ({
+    text: selectedTags.includes(tag) ? `${tag} ✓` : tag,
+    callback_data: `tag:${tag}`
+  }));
+  const row2 = DEFAULT_TAGS.slice(5, 10).map(tag => ({
+    text: selectedTags.includes(tag) ? `${tag} ✓` : tag,
+    callback_data: `tag:${tag}`
+  }));
+
+  const actionRow: Array<{ text: string; callback_data: string }> = [];
+  if (selectedTags.length > 0) {
+    actionRow.push({ text: "Done", callback_data: "tag:done" });
+  }
+  actionRow.push({ text: "Skip", callback_data: "tag:skip" });
+
+  return { inline_keyboard: [row1, row2, actionRow] };
+}
+
+/**
+ * Parse selected tags from the message text.
+ * Selected tags appear as "tag ✓" in button text, so we parse from the keyboard.
+ */
+function parseSelectedTagsFromMessage(message: any): string[] {
+  if (!message?.reply_markup?.inline_keyboard) return [];
+  const selected: string[] = [];
+  for (const row of message.reply_markup.inline_keyboard) {
+    for (const btn of row) {
+      if (btn.text?.endsWith(" ✓") && btn.callback_data?.startsWith("tag:")) {
+        selected.push(btn.callback_data.slice(4));
+      }
+    }
+  }
+  return selected;
+}
+
 async function sendCurrencyPrompt(env: Env, chatId: number) {
   await sendTelegramChatMessage(
     env,
     chatId,
     [
-      "Welcome to Gastos — your expense tracker",
-      "Send expenses as text, photo, or voice",
+      "You can't improve what you don't track.",
       "",
-      "First, pick your currency:",
+      "Gastos helps you log expenses in seconds — type, snap a receipt, or send a voice message. Let's get you set up.",
+      "",
+      "What currency do you use most?",
     ].join("\n"),
     {
       inline_keyboard: [
@@ -241,6 +349,15 @@ async function sendCurrencyPrompt(env: Env, chatId: number) {
         ["THB", "VND"].map(c => ({ text: c, callback_data: `cur:${c}` }))
       ]
     }
+  );
+}
+
+async function sendTagSelectionPrompt(env: Env, chatId: number) {
+  await sendTelegramChatMessage(
+    env,
+    chatId,
+    buildTagSelectionText([]),
+    buildTagKeyboard([])
   );
 }
 
@@ -257,15 +374,14 @@ async function sendCurrencyRetry(env: Env, chatId: number) {
   );
 }
 
-async function sendOnboardingComplete(env: Env, chatId: number, timezone: string, currency: string) {
+async function sendOnboardingComplete(env: Env, chatId: number) {
   await sendTelegramChatMessage(
     env,
     chatId,
     [
-      `All set — ${currency}, ${timezone}`,
+      "You're all set. Now make yourself proud.",
       "",
-      "Send me an expense to get started",
-      "Or use /today, /thisweek, /thismonth to check totals",
+      "Send me an expense — or use /today, /thisweek, /thismonth to check totals.",
     ].join("\n")
   );
 }
@@ -274,5 +390,6 @@ async function sendOnboardingComplete(env: Env, chatId: number, timezone: string
 export const onboardingConstants = {
   PRIORITY_CURRENCIES,
   ASEAN_CURRENCIES,
-  CURRENCY_TO_DEFAULT_TIMEZONE
+  CURRENCY_TO_DEFAULT_TIMEZONE,
+  DEFAULT_TAGS
 };

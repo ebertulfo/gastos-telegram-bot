@@ -2,7 +2,7 @@ import type { Env } from "../types";
 import { getPeriodUtcRange, type TotalsPeriod } from "../totals";
 
 const ALLOWED_UPDATE_COLUMNS = new Set([
-  "amount_minor", "currency", "category", "tags", "occurred_at_utc", "status"
+  "amount_minor", "currency", "description", "tags", "occurred_at_utc", "status"
 ]);
 
 export type ExpenseWithDetails = {
@@ -12,11 +12,10 @@ export type ExpenseWithDetails = {
     currency: string;
     occurred_at_utc: string;
     status: "final" | "needs_review";
+    description: string | null;
     text_raw: string | null;
     r2_object_key: string | null;
     needs_review_reason: boolean;
-    parsed_description: string | null;
-    category: string;
     tags: string; // Stored as JSON string in sqlite
 };
 
@@ -36,12 +35,11 @@ export async function getExpenses(
        e.currency,
        e.occurred_at_utc,
        e.status,
-       e.category,
+       e.description,
        e.tags,
        se.text_raw,
        se.r2_object_key,
-       pr.needs_review as needs_review_reason,
-       JSON_EXTRACT(pr.parsed_json, '$.description') as parsed_description
+       pr.needs_review as needs_review_reason
      FROM expenses e
      JOIN source_events se ON e.source_event_id = se.id
      LEFT JOIN parse_results pr ON pr.source_event_id = se.id
@@ -90,7 +88,7 @@ export async function insertExpense(
   sourceEventId: number,
   amountMinor: number,
   currency: string,
-  category: string,
+  description: string,
   tags: string[],
   occurredAtUtc: string,
   needsReview: boolean
@@ -98,7 +96,7 @@ export async function insertExpense(
   const result = await db.prepare(
     `INSERT INTO expenses (
        user_id, source_event_id, amount_minor, currency,
-       category, tags, occurred_at_utc, status, created_at_utc
+       description, tags, occurred_at_utc, status, created_at_utc
      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(source_event_id) DO NOTHING`
   )
@@ -107,7 +105,7 @@ export async function insertExpense(
       sourceEventId,
       amountMinor,
       currency,
-      category,
+      description,
       JSON.stringify(tags),
       occurredAtUtc,
       needsReview ? "needs_review" : "final",
@@ -132,7 +130,7 @@ export type RecentExpense = {
   id: number;
   amount_minor: number;
   currency: string;
-  category: string;
+  tags: string;
   occurred_at_utc: string;
   description: string | null;
 };
@@ -143,10 +141,9 @@ export async function getRecentExpenses(
   limit: number = 10
 ): Promise<RecentExpense[]> {
   const { results } = await db.prepare(
-    `SELECT e.id, e.amount_minor, e.currency, e.category, e.occurred_at_utc,
-            COALESCE(JSON_EXTRACT(pr.parsed_json, '$.description'), se.text_raw) as description
+    `SELECT e.id, e.amount_minor, e.currency, e.tags, e.occurred_at_utc,
+            COALESCE(e.description, se.text_raw) as description
      FROM expenses e
-     LEFT JOIN parse_results pr ON pr.source_event_id = e.source_event_id
      LEFT JOIN source_events se ON e.source_event_id = se.id
      WHERE e.user_id = ?
      ORDER BY e.created_at_utc DESC
@@ -177,4 +174,34 @@ export async function getUserTags(db: D1Database, userId: number): Promise<strin
         }
     }
     return Array.from(tagSet).sort();
+}
+
+/**
+ * Get the user's most-used tags with counts, for system prompt context.
+ */
+export async function getTopUserTags(db: D1Database, userId: number, limit: number = 10): Promise<string[]> {
+    const { results } = await db.prepare(
+        `SELECT tags FROM expenses WHERE user_id = ? AND tags != '[]'`
+    )
+        .bind(userId)
+        .all<{ tags: string }>();
+
+    const tagCounts = new Map<string, number>();
+    for (const row of results ?? []) {
+        try {
+            const parsed = JSON.parse(row.tags);
+            if (Array.isArray(parsed)) {
+                for (const tag of parsed) {
+                    tagCounts.set(tag, (tagCounts.get(tag) ?? 0) + 1);
+                }
+            }
+        } catch {
+            // skip malformed JSON
+        }
+    }
+
+    return Array.from(tagCounts.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, limit)
+        .map(([tag]) => tag);
 }

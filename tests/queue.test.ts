@@ -74,6 +74,7 @@ vi.mock("../src/ai/openai", () => ({
 // Mock expenses DB (getRecentExpenses is called to build agent context)
 vi.mock("../src/db/expenses", () => ({
   getRecentExpenses: vi.fn().mockResolvedValue([]),
+  getTopUserTags: vi.fn().mockResolvedValue([]),
 }));
 
 function createEnv(): Env {

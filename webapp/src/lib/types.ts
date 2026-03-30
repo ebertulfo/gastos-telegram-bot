@@ -5,11 +5,10 @@ export type ExpenseWithDetails = {
   currency: string;
   occurred_at_utc: string;
   status: "final" | "needs_review";
+  description: string | null;
   text_raw: string | null;
   r2_object_key: string | null;
   needs_review_reason: boolean;
-  parsed_description: string | null;
-  category: string;
   tags: string; // JSON array stored as string
 };
 

@@ -87,8 +87,8 @@ describe("getUserTags", () => {
 describe("getRecentExpenses", () => {
   it("returns last N expenses with descriptions", async () => {
     const results = [
-      { id: 42, amount_minor: 28000, currency: "SGD", category: "Food", occurred_at_utc: "2026-03-18T01:34:35Z", description: "Coffee" },
-      { id: 40, amount_minor: 2270, currency: "SGD", category: "Food", occurred_at_utc: "2026-03-17T05:04:56Z", description: "Lunch, Mr. Noodles" },
+      { id: 42, amount_minor: 28000, currency: "SGD", tags: '["food","coffee"]', occurred_at_utc: "2026-03-18T01:34:35Z", description: "Coffee" },
+      { id: 40, amount_minor: 2270, currency: "SGD", tags: '["food"]', occurred_at_utc: "2026-03-17T05:04:56Z", description: "Lunch, Mr. Noodles" },
     ];
     const all = vi.fn(async () => ({ results }));
     const bind = vi.fn(() => ({ all }));
