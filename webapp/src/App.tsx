@@ -35,7 +35,7 @@ export default function App() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col" style={{ background: "var(--bg-base)" }}>
+    <div className="flex flex-col" style={{ background: "var(--bg-base)", minHeight: "100dvh" }}>
       <main className="flex-1 overflow-y-auto px-4 pb-16">
         {activeTab === "dashboard" && <DashboardScreen />}
         {activeTab === "analytics" && (

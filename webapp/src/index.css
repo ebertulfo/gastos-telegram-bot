@@ -60,6 +60,10 @@
     border-color: var(--border);
   }
 
+  html, body, #root {
+    height: 100%;
+  }
+
   body {
     background-color: var(--bg-base);
     color: var(--text-primary);
