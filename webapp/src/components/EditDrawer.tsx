@@ -120,7 +120,7 @@ export function EditDrawer({ expense, allTags, onClose, onSaved }: EditDrawerPro
             maxHeight: keyboardOpen ? "45vh" : "85dvh",
             width: "100vw",
             borderRadius: "var(--radius-xl) var(--radius-xl) 0 0",
-            transition: "max-height 0.25s ease-out",
+            transition: "max-height 0.2s ease-in-out",
           }}
         >
           <div className="overflow-y-auto overflow-x-hidden px-4 pb-6 pt-3">

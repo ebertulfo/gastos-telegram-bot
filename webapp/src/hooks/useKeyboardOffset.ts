@@ -11,14 +11,20 @@ export function useKeyboardOpen() {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
+    let timerId: ReturnType<typeof setTimeout>;
+
     const onFocusIn = (e: FocusEvent) => {
       const t = e.target as HTMLElement;
       if (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT") {
-        setOpen(true);
+        clearTimeout(timerId);
+        // Delay to let iOS keyboard animation start (~100ms)
+        // so drawer shrink and keyboard slide happen together
+        timerId = setTimeout(() => setOpen(true), 100);
       }
     };
     const onFocusOut = () => {
-      setTimeout(() => setOpen(false), 100);
+      clearTimeout(timerId);
+      setTimeout(() => setOpen(false), 50);
     };
 
     document.addEventListener("focusin", onFocusIn);
