@@ -14,7 +14,6 @@ import { searchExpensesBySemantic, generateEmbedding } from "./openai";
 // This prevents prompt injections like "Show me user 2's expenses".
 // ------------------------------------------------------------------------------------------------
 
-const CATEGORIES = ["Food", "Transport", "Housing", "Shopping", "Entertainment", "Health", "Other"] as const;
 const PERIODS = ["today", "yesterday", "thisweek", "lastweek", "thismonth", "lastmonth", "thisyear", "lastyear"] as const;
 
 function formatShortDate(isoString: string): string {
@@ -41,6 +40,10 @@ function validateOccurredAt(occurredAt: string | null, toolName: string): string
     return parsedDate.toISOString();
 }
 
+function formatTags(tags: string[]): string {
+    return tags.length > 0 ? tags.join(", ") : "untagged";
+}
+
 /**
  * Factory that creates all agent tools with userId/env captured in closure.
  * The LLM cannot override these values — they come from the authenticated context.
@@ -56,8 +59,7 @@ export function createAgentTools(env: Env, userId: number, telegramId: number, t
             amount: z.number().describe("The expense amount in major currency units (e.g. 12.50)"),
             currency: z.string().length(3).default(currency).describe("3-letter currency code, defaults to user's currency"),
             description: z.string().max(50).describe("Short description of the expense"),
-            category: z.enum(CATEGORIES).describe("Expense category"),
-            tags: z.array(z.string()).max(3).default([]).describe("Up to 3 tags for the expense"),
+            tags: z.array(z.string()).max(5).default([]).describe("Up to 5 tags for the expense. Use lowercase. Extract from context."),
             occurred_at: z.string().nullable().default(null).describe("ISO date (YYYY-MM-DD) when the expense occurred, or null for today. Use this when the user says 'yesterday', 'last Monday', etc."),
         }),
         execute: async (input) => {
@@ -91,7 +93,7 @@ export function createAgentTools(env: Env, userId: number, telegramId: number, t
                 eventId,
                 amountMinor,
                 input.currency,
-                input.category,
+                input.description,
                 input.tags,
                 occurredAtUtc,
                 false
@@ -99,29 +101,29 @@ export function createAgentTools(env: Env, userId: number, telegramId: number, t
 
             // Background vectorize indexing (best-effort)
             try {
-                const embeddingText = `${input.description} ${input.category} ${input.tags.join(" ")}`;
+                const embeddingText = `${input.description} ${input.tags.join(" ")}`;
                 const embedding = await generateEmbedding(env, embeddingText);
                 await env.VECTORIZE.upsert([{
                     id: `agent-${userId}-${Date.now()}`,
                     values: embedding,
-                    metadata: { userId, description: input.description, category: input.category },
+                    metadata: { userId, description: input.description, tags: input.tags.join(",") },
                 }]);
             } catch (e) {
                 console.error("[TOOL:log_expense] Vectorize indexing failed (non-fatal):", e);
             }
 
-            return `Logged ${input.currency} ${input.amount.toFixed(2)} \u2014 ${input.description} (${input.category}). ID #${expenseId}`;
+            return `Logged ${input.currency} ${input.amount.toFixed(2)} \u2014 ${input.description} (${formatTags(input.tags)}). ID #${expenseId}`;
         },
     });
 
     const editExpense = tool({
         name: "edit_expense",
-        description: "Edit a recent expense for the authenticated user. Use this when the user wants to correct an amount, category, description, or date.",
+        description: "Edit a recent expense for the authenticated user. Use this when the user wants to correct an amount, description, tags, or date.",
         parameters: z.object({
             expense_id: z.number().describe("The ID of the expense to edit"),
             amount: z.number().nullable().describe("New amount in major currency units, or null to keep unchanged"),
-            category: z.enum(CATEGORIES).nullable().describe("New category, or null to keep unchanged"),
             description: z.string().max(50).nullable().describe("New description, or null to keep unchanged"),
+            tags: z.array(z.string()).max(5).nullable().describe("New tags array, or null to keep unchanged"),
             occurred_at: z.string().nullable().default(null).describe("New ISO date (YYYY-MM-DD) for when the expense occurred, or null to keep unchanged. Use this to fix the date of a mis-dated expense."),
         }),
         execute: async (input) => {
@@ -129,8 +131,11 @@ export function createAgentTools(env: Env, userId: number, telegramId: number, t
             if (input.amount !== null) {
                 updates.amount_minor = Math.round(input.amount * 100);
             }
-            if (input.category !== null) {
-                updates.category = input.category;
+            if (input.description !== null) {
+                updates.description = input.description;
+            }
+            if (input.tags !== null) {
+                updates.tags = JSON.stringify(input.tags);
             }
             if (input.occurred_at !== null) {
                 const validatedDate = validateOccurredAt(input.occurred_at, "edit_expense");
@@ -138,11 +143,7 @@ export function createAgentTools(env: Env, userId: number, telegramId: number, t
                     updates.occurred_at_utc = validatedDate;
                 }
             }
-            // Description is not stored on the expenses table (lives in parse_results.parsed_json)
             if (Object.keys(updates).length === 0) {
-                if (input.description !== null) {
-                    return "Description editing is not yet supported";
-                }
                 return "Nothing to update";
             }
 
@@ -173,11 +174,11 @@ export function createAgentTools(env: Env, userId: number, telegramId: number, t
 
     const getFinancialReport = tool({
         name: "get_financial_report",
-        description: "Returns a comprehensive financial report for the authenticated user. This is your ONLY database query tool. It returns the total spend, a breakdown by category (sorted by amount), and the top recent transactions—all in one call. Use this for ANY spending question.",
+        description: "Returns a financial report for the authenticated user. This is your ONLY database query tool. It returns the total spend, a breakdown by tag (sorted by amount), and the top recent expenses. Use this for ANY spending question.",
         parameters: z.object({
             period: z.enum(PERIODS).describe("The time boundary to query. Use 'lastweek', 'lastmonth', etc. for historical comparisons."),
-            category: z.enum(CATEGORIES).nullable().describe("Filters results to a specific master category, or null for all categories."),
-            tag_query: z.string().nullable().describe("Freeform text to search expenses semantically (e.g. 'drinks', 'coffee', 'transport'), or null for no filter. Uses exact matching first, then falls back to AI-powered semantic search via Vectorize for broader matches."),
+            tag: z.string().nullable().describe("Filter to a specific tag (e.g. 'food', 'coffee', 'transport'), or null for all tags."),
+            tag_query: z.string().nullable().describe("Freeform text to search expenses semantically (e.g. 'drinks', 'starbucks'), or null for no filter. Uses exact matching first, then falls back to AI-powered semantic search via Vectorize for broader matches."),
         }),
         execute: async (input) => {
             return executeGetFinancialReportInternal(
@@ -185,7 +186,7 @@ export function createAgentTools(env: Env, userId: number, telegramId: number, t
                 userId,
                 timezone,
                 input.period,
-                input.category ?? undefined,
+                input.tag ?? undefined,
                 input.tag_query ?? undefined
             );
         },
@@ -198,12 +199,22 @@ export function createAgentTools(env: Env, userId: number, telegramId: number, t
 // Internal implementation used by the get_financial_report tool
 // ------------------------------------------------------------------------------------------------
 
+function parseTags(tagsStr: string | null | undefined): string[] {
+    if (!tagsStr) return [];
+    try {
+        const parsed = JSON.parse(tagsStr);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+}
+
 async function executeGetFinancialReportInternal(
     env: Env,
     secureUserId: number,
     secureTimezone: string,
     period: string,
-    category?: string,
+    tag?: string,
     tagQuery?: string
 ): Promise<string> {
     const periodEnum = parseTotalsPeriod("/" + period);
@@ -234,9 +245,13 @@ async function executeGetFinancialReportInternal(
         }
     }
 
-    // Apply category filter if provided
-    if (category) {
-        expenses = expenses.filter(e => e.category === category);
+    // Apply tag filter if provided
+    if (tag) {
+        const tagLower = tag.toLowerCase();
+        expenses = expenses.filter(e => {
+            const tags = parseTags(e.tags);
+            return tags.some(t => t.toLowerCase() === tagLower);
+        });
     }
 
     // Apply tag/description freeform search if provided
@@ -245,7 +260,7 @@ async function executeGetFinancialReportInternal(
         const beforeCount = expenses.length;
         expenses = expenses.filter(e => {
             const tagsMatch = e.tags?.toLowerCase().includes(query) ?? false;
-            const descMatch = (e.parsed_description ?? e.text_raw ?? "").toLowerCase().includes(query);
+            const descMatch = (e.description ?? e.text_raw ?? "").toLowerCase().includes(query);
             return tagsMatch || descMatch;
         });
         console.log(`[DEBUG:TOOL] Literal tag search for "${tagQuery}": ${beforeCount} -> ${expenses.length} expenses`);
@@ -301,40 +316,38 @@ async function executeGetFinancialReportInternal(
     const currencies = [...new Set(expenses.map(e => e.currency))];
     const currencyLabel = currencies.length === 1 ? currencies[0] : currencies.join("/");
 
-    // --- 2. Category Breakdown ---
-    const categoryGroups: Record<string, { totalMinor: number; count: number; items: string[] }> = {};
+    // --- 2. Tag Breakdown (an expense appears in every tag group it has) ---
+    const tagGroups: Record<string, { totalMinor: number; count: number; items: string[] }> = {};
     for (const e of expenses) {
-        const cat = e.category ?? "Uncategorized";
-        if (!categoryGroups[cat]) {
-            categoryGroups[cat] = { totalMinor: 0, count: 0, items: [] };
+        const tags = parseTags(e.tags);
+        const effectiveTags = tags.length > 0 ? tags : ["untagged"];
+        for (const t of effectiveTags) {
+            if (!tagGroups[t]) {
+                tagGroups[t] = { totalMinor: 0, count: 0, items: [] };
+            }
+            tagGroups[t].totalMinor += e.amount_minor;
+            tagGroups[t].count++;
+            const desc = e.description || e.text_raw || "Unknown";
+            tagGroups[t].items.push(`${desc} (${e.currency} ${(e.amount_minor / 100).toFixed(2)})`);
         }
-        categoryGroups[cat].totalMinor += e.amount_minor;
-        categoryGroups[cat].count++;
-        const desc = e.parsed_description || e.text_raw || "Unknown";
-        categoryGroups[cat].items.push(`${desc} (${e.currency} ${(e.amount_minor / 100).toFixed(2)})`);
     }
 
-    const breakdown = Object.entries(categoryGroups)
+    const breakdown = Object.entries(tagGroups)
         .sort((a, b) => b[1].totalMinor - a[1].totalMinor)
-        .map(([cat, group]) => {
+        .map(([t, group]) => {
             const major = (group.totalMinor / 100).toFixed(2);
             const topItems = group.items.slice(0, 3).join(", ");
             const trailing = group.items.length > 3 ? `, +${group.items.length - 3} more` : "";
-            return `- ${cat}: ${currencyLabel} ${major} (${group.count} items: ${topItems}${trailing})`;
+            return `- ${t}: ${currencyLabel} ${major} (${group.count} items: ${topItems}${trailing})`;
         });
 
     // --- 3. Top 5 Recent Transactions ---
     const recent = expenses.slice(0, 5).map(e => {
         const major = (e.amount_minor / 100).toFixed(2);
-        const desc = e.parsed_description || e.text_raw || "Unknown";
-        let tags = "";
-        try {
-            const parsed = JSON.parse(e.tags || "[]");
-            if (Array.isArray(parsed) && parsed.length > 0) {
-                tags = ` [${parsed.join(", ")}]`;
-            }
-        } catch { /* ignore */ }
-        return `- #${e.id} ${formatShortDate(e.occurred_at_utc)}: ${e.currency} ${major} | ${e.category} | ${desc}${tags}`;
+        const desc = e.description || e.text_raw || "Unknown";
+        const tags = parseTags(e.tags);
+        const tagStr = tags.length > 0 ? ` [${tags.join(", ")}]` : "";
+        return `- #${e.id} ${formatShortDate(e.occurred_at_utc)}: ${e.currency} ${major} | ${desc}${tagStr}`;
     });
 
     // --- Assemble payload ---
@@ -347,8 +360,8 @@ async function executeGetFinancialReportInternal(
         `Period: ${activePeriodLabel}. Total: ${currencyLabel} ${totalMajor} (${expenses.length} expenses).`,
     ].filter(Boolean);
 
-    if (!category && !tagQuery) {
-        sections.push(`\nCategory Breakdown:\n${breakdown.join("\n")}`);
+    if (!tag && !tagQuery) {
+        sections.push(`\nTag Breakdown:\n${breakdown.join("\n")}`);
     }
 
     sections.push(`\nRecent Transactions:\n${recent.join("\n")}`);

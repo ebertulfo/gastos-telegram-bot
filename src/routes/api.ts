@@ -109,7 +109,7 @@ apiRouter.put("/expenses/:id", async (c) => {
     const body = await c.req.json();
     const amount_minor = body.amount_minor;
     const currency = body.currency;
-    const category = body.category;
+    const description = body.description;
     const tags = body.tags;
 
     if (amount_minor !== undefined && typeof amount_minor !== "number") {
@@ -121,8 +121,8 @@ apiRouter.put("/expenses/:id", async (c) => {
     if (currency !== undefined && !KNOWN_CURRENCIES.has(currency.toUpperCase())) {
         return c.json({ error: "Unsupported currency code" }, 400);
     }
-    if (category !== undefined && typeof category !== "string") {
-        return c.json({ error: "category must be a string" }, 400);
+    if (description !== undefined && typeof description !== "string") {
+        return c.json({ error: "description must be a string" }, 400);
     }
     if (tags !== undefined && !Array.isArray(tags)) {
         return c.json({ error: "tags must be an array of strings" }, 400);
@@ -135,7 +135,7 @@ apiRouter.put("/expenses/:id", async (c) => {
     const updateData: Record<string, unknown> = {};
     if (amount_minor !== undefined) updateData.amount_minor = amount_minor;
     if (currency !== undefined) updateData.currency = currency.toUpperCase();
-    if (category !== undefined) updateData.category = category;
+    if (description !== undefined) updateData.description = description;
     if (tags !== undefined) updateData.tags = JSON.stringify(tags);
     if (occurred_at_utc !== undefined) {
         updateData.occurred_at_utc = new Date(`${occurred_at_utc}T12:00:00Z`).toISOString();
@@ -147,15 +147,16 @@ apiRouter.put("/expenses/:id", async (c) => {
     c.executionCtx.waitUntil((async () => {
         try {
             const updated = await c.env.DB.prepare(
-                `SELECT e.source_event_id, e.category, e.tags, e.currency, se.text_raw
+                `SELECT e.source_event_id, e.description, e.tags, e.currency, se.text_raw
                  FROM expenses e
                  JOIN source_events se ON e.source_event_id = se.id
                  WHERE e.id = ?`
-            ).bind(expenseId).first<{ source_event_id: number, category: string, tags: string, currency: string, text_raw: string | null }>();
+            ).bind(expenseId).first<{ source_event_id: number, description: string | null, tags: string, currency: string, text_raw: string | null }>();
 
-            if (updated && updated.text_raw && updated.text_raw.trim() !== "") {
+            if (updated && (updated.text_raw || updated.description)) {
                 const { generateEmbedding } = await import("../ai/openai");
-                const embedding = await generateEmbedding(c.env, updated.text_raw);
+                const embeddingText = updated.description || updated.text_raw || "";
+                const embedding = await generateEmbedding(c.env, embeddingText);
                 if (embedding.length > 0) {
                     await c.env.VECTORIZE.upsert([{
                         id: `expense_${updated.source_event_id}`,
@@ -163,10 +164,9 @@ apiRouter.put("/expenses/:id", async (c) => {
                         metadata: {
                             user_id: c.get("userId"),
                             expense_id: updated.source_event_id,
-                            category: updated.category,
-                            tags: updated.tags, // already a JSON string in DB
+                            tags: updated.tags,
                             currency: updated.currency,
-                            raw_text: updated.text_raw
+                            raw_text: updated.text_raw ?? ""
                         }
                     }]);
                 }

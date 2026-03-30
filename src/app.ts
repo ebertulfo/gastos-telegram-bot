@@ -103,11 +103,10 @@ export function createApp() {
 
   app.get("/debug/expenses", async (c) => {
     const { results } = await c.env.DB.prepare(
-      `SELECT e.id, e.source_event_id, e.amount_minor, e.currency, e.category, e.tags,
-              se.text_raw, JSON_EXTRACT(pr.parsed_json, '$.description') as parsed_description
+      `SELECT e.id, e.source_event_id, e.amount_minor, e.currency, e.description, e.tags,
+              se.text_raw
        FROM expenses e
        JOIN source_events se ON e.source_event_id = se.id
-       LEFT JOIN parse_results pr ON pr.source_event_id = se.id
        ORDER BY e.id DESC LIMIT 50`
     ).all();
     return c.json({ count: results?.length ?? 0, expenses: results });
@@ -128,6 +127,8 @@ export function createApp() {
     const result = await backfillVectorize(c.env);
     return c.json(result);
   });
+
+  // Category-to-tags migration is now handled in 0012_drop_category.sql (pure SQL)
 
   app.get("/debug/traces/summary", async (c) => {
     const hours = Math.max(1, parseInt(c.req.query("hours") ?? "24") || 24);

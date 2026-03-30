@@ -91,11 +91,10 @@ describe("createAgentTools", () => {
       amount: 150,
       currency: "PHP",
       description: "Lunch",
-      category: "Food",
-      tags: ["lunch"],
+      tags: ["food", "lunch"],
     });
     expect(result).toContain("150");
-    expect(result).toContain("Food");
+    expect(result).toContain("food");
   });
 
   it("log_expense uses original sourceEventId instead of creating a synthetic one", async () => {
@@ -110,8 +109,7 @@ describe("createAgentTools", () => {
       amount: 17.22,
       currency: "SGD",
       description: "tada transport",
-      category: "Transport",
-      tags: ["tada"],
+      tags: ["transport"],
     });
 
     // Should use original sourceEventId (42), NOT create a synthetic one
@@ -122,8 +120,8 @@ describe("createAgentTools", () => {
       42, // original sourceEventId
       1722,
       "SGD",
-      "Transport",
-      ["tada"],
+      "tada transport",
+      ["transport"],
       expect.any(String),
       false,
     );
@@ -143,8 +141,7 @@ describe("createAgentTools", () => {
       amount: 5,
       currency: "SGD",
       description: "coffee",
-      category: "Food",
-      tags: [],
+      tags: ["coffee"],
     });
 
     // Second expense: should create synthetic sourceEventId
@@ -152,8 +149,7 @@ describe("createAgentTools", () => {
       amount: 12,
       currency: "SGD",
       description: "lunch",
-      category: "Food",
-      tags: [],
+      tags: ["food"],
     });
 
     expect(createAgentSourceEvent).toHaveBeenCalledTimes(1); // only for 2nd
@@ -168,7 +164,8 @@ describe("createAgentTools", () => {
     const result = await editTool.execute({
       expense_id: 1,
       amount: 200,
-      category: "Transport",
+      description: null,
+      tags: null,
     });
     expect(result).toContain("1");
   });
@@ -182,22 +179,20 @@ describe("createAgentTools", () => {
     expect(result).toContain("5");
   });
 
-  it("edit_expense maps description to valid expenses columns only", async () => {
+  it("edit_expense updates description on expenses table", async () => {
     const { updateExpense } = await import("../src/db/expenses");
     const tools = createAgentTools(createMockEnv(), userId, 12345, timezone, currency);
     const editTool = tools[1] as any;
     await editTool.execute({
       expense_id: 1,
       amount: 17.2,
-      category: null,
       description: "Lunch updated",
+      tags: null,
     });
-    // Should NOT pass 'parsed_description' — that column doesn't exist on expenses table
-    // Should pass only columns that exist: amount_minor, category, tags
     const calls = vi.mocked(updateExpense).mock.calls;
     const updates = calls[calls.length - 1][3];
-    expect(updates).not.toHaveProperty("parsed_description");
     expect(updates).toHaveProperty("amount_minor", 1720);
+    expect(updates).toHaveProperty("description", "Lunch updated");
   });
 
   it("edit_expense updates occurred_at_utc when occurred_at is provided", async () => {
@@ -207,8 +202,8 @@ describe("createAgentTools", () => {
     await editTool.execute({
       expense_id: 1,
       amount: null,
-      category: null,
       description: null,
+      tags: null,
       occurred_at: "2026-03-10",
     });
     const calls = vi.mocked(updateExpense).mock.calls;
@@ -224,8 +219,8 @@ describe("createAgentTools", () => {
     await editTool.execute({
       expense_id: 1,
       amount: 20,
-      category: null,
       description: null,
+      tags: null,
       occurred_at: null,
     });
     const calls = vi.mocked(updateExpense).mock.calls;
@@ -245,8 +240,7 @@ describe("createAgentTools", () => {
       amount: 18,
       currency: "SGD",
       description: "Lunch",
-      category: "Food",
-      tags: ["lunch"],
+      tags: ["food"],
     });
     expect(result).toContain("ID");
   });
@@ -261,12 +255,11 @@ describe("createAgentTools", () => {
         currency: "SGD",
         occurred_at_utc: "2026-03-10T04:07:00Z",
         status: "final",
-        category: "Food",
-        tags: '["lunch"]',
+        tags: '["food","lunch"]',
+        description: "Lunch",
         text_raw: null,
         r2_object_key: null,
         needs_review_reason: false,
-        parsed_description: "Lunch",
       },
     ]);
 
@@ -274,7 +267,7 @@ describe("createAgentTools", () => {
     const reportTool = tools[3] as any;
     const result = await reportTool.execute({
       period: "today",
-      category: null,
+      tag: null,
       tag_query: null,
     });
     // The report should include expense IDs so the agent can use edit_expense/delete_expense
@@ -291,8 +284,7 @@ describe("createAgentTools", () => {
       amount: 18,
       currency: "SGD",
       description: "Lunch",
-      category: "Food",
-      tags: ["lunch"],
+      tags: ["food"],
       occurred_at: "2026-03-10",
     });
 
@@ -312,8 +304,7 @@ describe("createAgentTools", () => {
       amount: 5,
       currency: "SGD",
       description: "Coffee",
-      category: "Food",
-      tags: [],
+      tags: ["coffee"],
       occurred_at: "2025-01-01",
     });
 
@@ -333,7 +324,6 @@ describe("createAgentTools", () => {
       amount: 10,
       currency: "SGD",
       description: "Future lunch",
-      category: "Food",
       tags: [],
       occurred_at: "2099-01-01",
     });
@@ -358,8 +348,7 @@ describe("createAgentTools", () => {
       amount: 18,
       currency: "SGD",
       description: "Lunch",
-      category: "Food",
-      tags: [],
+      tags: ["food"],
       occurred_at: yesterdayStr,
     });
 
@@ -378,12 +367,11 @@ describe("createAgentTools", () => {
         currency: "SGD",
         occurred_at_utc: "2026-03-14T04:00:00Z",
         status: "final",
-        category: "Food",
-        tags: "[]",
+        tags: '["coffee"]',
+        description: "Coffee",
         text_raw: null,
         r2_object_key: null,
         needs_review_reason: false,
-        parsed_description: "Coffee",
       },
     ]);
 
@@ -391,7 +379,7 @@ describe("createAgentTools", () => {
     const reportTool = tools[3] as any;
     const result = await reportTool.execute({
       period: "thismonth",
-      category: null,
+      tag: null,
       tag_query: null,
     });
     expect(result).toContain("This Month");
@@ -408,12 +396,11 @@ describe("createAgentTools", () => {
         currency: "SGD",
         occurred_at_utc: "2026-03-14T04:00:00Z",
         status: "final",
-        category: "Food",
-        tags: "[]",
+        tags: '["food"]',
+        description: "Lunch",
         text_raw: null,
         r2_object_key: null,
         needs_review_reason: false,
-        parsed_description: "Lunch",
       },
     ]);
 
@@ -421,7 +408,7 @@ describe("createAgentTools", () => {
     const reportTool = tools[3] as any;
     const result = await reportTool.execute({
       period: "today",
-      category: null,
+      tag: null,
       tag_query: null,
     });
     expect(result).not.toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
@@ -438,8 +425,7 @@ describe("createAgentTools", () => {
       amount: 12.5,
       currency: "PHP",
       description: "Lunch",
-      category: "Food",
-      tags: [],
+      tags: ["food"],
     });
     expect(result).toContain("\u2014");
     expect(result).not.toContain('for "');
@@ -452,8 +438,8 @@ describe("createAgentTools", () => {
     const result = await editTool.execute({
       expense_id: 7,
       amount: 37.8,
-      category: null,
       description: null,
+      tags: null,
       occurred_at: null,
     });
     expect(result).toContain("#7");
@@ -469,24 +455,29 @@ describe("createAgentTools", () => {
     const result = await editTool.execute({
       expense_id: 999,
       amount: 5,
-      category: null,
       description: null,
+      tags: null,
       occurred_at: null,
     });
     expect(result).toContain("not found");
   });
 
-  it("edit_expense returns not-supported when only description provided", async () => {
+  it("edit_expense updates description when provided", async () => {
+    const { updateExpense } = await import("../src/db/expenses");
     const tools = createAgentTools(createMockEnv(), userId, 12345, timezone, currency);
     const editTool = tools[1] as any;
     const result = await editTool.execute({
       expense_id: 42,
       amount: null,
-      category: null,
       description: "Updated name",
+      tags: null,
       occurred_at: null,
     });
-    expect(result).toContain("not yet supported");
+    // Description editing is now supported
+    const calls = vi.mocked(updateExpense).mock.calls;
+    const updates = calls[calls.length - 1][3];
+    expect(updates).toHaveProperty("description", "Updated name");
+    expect(result).toContain("changed");
   });
 
   it("delete_expense returns failure when expense not found", async () => {
@@ -505,8 +496,8 @@ describe("createAgentTools", () => {
     const result = await editTool.execute({
       expense_id: 42,
       amount: null,
-      category: null,
       description: null,
+      tags: null,
       occurred_at: null,
     });
     expect(result).toContain("Nothing to update");
@@ -520,8 +511,7 @@ describe("createAgentTools", () => {
       amount: 12.5,
       currency: "PHP",
       description: "Lunch",
-      category: "Food",
-      tags: [],
+      tags: ["food"],
     };
 
     const first = await logTool.execute(input);
@@ -541,8 +531,7 @@ describe("createAgentTools", () => {
       amount: 5,
       currency: "SGD",
       description: "Coffee",
-      category: "Food",
-      tags: [],
+      tags: ["coffee"],
     });
 
     const calls = vi.mocked(insertExpense).mock.calls;
@@ -550,5 +539,51 @@ describe("createAgentTools", () => {
     // Should be today's date
     const today = new Date().toISOString().slice(0, 10);
     expect(occurredAtUtc).toContain(today);
+  });
+
+  it("get_financial_report groups by tag with double-counting", async () => {
+    const { getExpenses } = await import("../src/db/expenses");
+    vi.mocked(getExpenses).mockResolvedValueOnce([
+      {
+        id: 90,
+        source_event_id: 200,
+        amount_minor: 500,
+        currency: "SGD",
+        occurred_at_utc: "2026-03-14T04:00:00Z",
+        status: "final",
+        tags: '["coffee","food"]',
+        description: "Latte",
+        text_raw: null,
+        r2_object_key: null,
+        needs_review_reason: false,
+      },
+    ]);
+
+    const tools = createAgentTools(createMockEnv(), userId, 12345, timezone, currency);
+    const reportTool = tools[3] as any;
+    const result = await reportTool.execute({
+      period: "thismonth",
+      tag: null,
+      tag_query: null,
+    });
+    // Both tags should appear in the breakdown
+    expect(result).toContain("coffee");
+    expect(result).toContain("food");
+  });
+
+  it("edit_expense updates tags when provided", async () => {
+    const { updateExpense } = await import("../src/db/expenses");
+    const tools = createAgentTools(createMockEnv(), userId, 12345, timezone, currency);
+    const editTool = tools[1] as any;
+    await editTool.execute({
+      expense_id: 1,
+      amount: null,
+      description: null,
+      tags: ["food", "dinner"],
+      occurred_at: null,
+    });
+    const calls = vi.mocked(updateExpense).mock.calls;
+    const updates = calls[calls.length - 1][3];
+    expect(updates).toHaveProperty("tags", JSON.stringify(["food", "dinner"]));
   });
 });

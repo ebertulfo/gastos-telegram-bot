@@ -7,8 +7,8 @@ import { TransactionList } from "../components/TransactionList";
 import { EditDrawer } from "../components/EditDrawer";
 import { Skeleton } from "../components/ui/skeleton";
 import { fetchExpenses, fetchUserProfile, fetchUserTags } from "../lib/api";
-import { getCategoryConfig } from "../lib/categories";
-import { formatAmountShort } from "../lib/format";
+import { getTagConfig } from "../lib/categories";
+import { formatAmountShort, parseTags } from "../lib/format";
 import type { ExpenseWithDetails, Period } from "../lib/types";
 
 const PERIOD_OPTIONS = [
@@ -66,35 +66,41 @@ export function AnalyticsScreen({ drillDownCategory, onDrillDown, onBack }: Anal
     fetchUserTags().then(setAllTags).catch(() => {});
   }, [loadExpenses]);
 
-  // Compute category totals
+  // Compute tag totals (an expense appears in every tag group it has)
   const totalMinor = expenses.reduce((sum, e) => sum + e.amount_minor, 0);
-  const categoryMap = new Map<string, { totalMinor: number; count: number }>();
+  const tagMap = new Map<string, { totalMinor: number; count: number }>();
   for (const e of expenses) {
-    const cat = e.category || "Other";
-    const existing = categoryMap.get(cat) || { totalMinor: 0, count: 0 };
-    existing.totalMinor += e.amount_minor;
-    existing.count++;
-    categoryMap.set(cat, existing);
+    const tags = parseTags(e.tags);
+    const effectiveTags = tags.length > 0 ? tags : ["untagged"];
+    for (const tag of effectiveTags) {
+      const existing = tagMap.get(tag) || { totalMinor: 0, count: 0 };
+      existing.totalMinor += e.amount_minor;
+      existing.count++;
+      tagMap.set(tag, existing);
+    }
   }
-  const categoryTotals: CategoryTotal[] = Array.from(categoryMap.entries())
-    .map(([category, data]) => ({
-      category,
+  const tagTotals: CategoryTotal[] = Array.from(tagMap.entries())
+    .map(([tag, data]) => ({
+      category: tag, // CategoryList expects "category" field name
       totalMinor: data.totalMinor,
       count: data.count,
       percentage: totalMinor > 0 ? Math.round((data.totalMinor / totalMinor) * 100) : 0,
     }))
     .sort((a, b) => b.totalMinor - a.totalMinor);
 
-  const donutSegments = categoryTotals.map((cat) => ({
-    label: cat.category,
-    value: cat.totalMinor,
-    color: getCategoryConfig(cat.category).color,
+  const donutSegments = tagTotals.map((t) => ({
+    label: t.category,
+    value: t.totalMinor,
+    color: getTagConfig(t.category).color,
   }));
 
-  // Drill-down: filter expenses by selected category
+  // Drill-down: filter expenses by selected tag
   if (drillDownCategory) {
-    const filtered = expenses.filter((e) => e.category === drillDownCategory);
-    const catConfig = getCategoryConfig(drillDownCategory);
+    const drillDownTag = drillDownCategory;
+    const filtered = expenses.filter((e) => {
+      const tags = parseTags(e.tags);
+      return tags.includes(drillDownTag);
+    });
 
     return (
       <>
@@ -103,7 +109,7 @@ export function AnalyticsScreen({ drillDownCategory, onDrillDown, onBack }: Anal
             <ArrowLeft size={20} color="var(--foreground)" />
           </button>
           <span className="text-lg font-semibold" style={{ color: "var(--foreground)" }}>
-            {catConfig.emoji} {drillDownCategory}
+            #{drillDownTag}
           </span>
           <span className="text-sm" style={{ color: "var(--text-secondary)" }}>
             ({filtered.length})
@@ -146,7 +152,7 @@ export function AnalyticsScreen({ drillDownCategory, onDrillDown, onBack }: Anal
         </div>
       ) : expenses.length === 0 ? (
         <div className="py-12 text-center text-sm" style={{ color: "var(--text-secondary)" }}>
-          No spending data yet.
+          Not enough data yet — log a few expenses to see insights.
         </div>
       ) : (
         <>
@@ -157,7 +163,7 @@ export function AnalyticsScreen({ drillDownCategory, onDrillDown, onBack }: Anal
           />
           <div className="mt-6">
             <CategoryList
-              categories={categoryTotals}
+              categories={tagTotals}
               currency={currency}
               onCategoryClick={onDrillDown}
             />

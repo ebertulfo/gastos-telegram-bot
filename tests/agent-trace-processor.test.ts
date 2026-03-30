@@ -199,7 +199,7 @@ describe("AgentTraceProcessor", () => {
         {
           type: "function",
           name: "log_expense",
-          input: '{"amount":10,"category":"food"}',
+          input: '{"amount":10,"tags":["food"]}',
           output: '{"id":123,"status":"ok"}',
         },
         "2026-03-13T10:00:03.200Z",
@@ -213,7 +213,7 @@ describe("AgentTraceProcessor", () => {
       expect(rec.durationMs).toBe(400);
       expect(rec.metadata).toEqual({
         name: "log_expense",
-        input: '{"amount":10,"category":"food"}',
+        input: '{"amount":10,"tags":["food"]}',
         output: '{"id":123,"status":"ok"}',
       });
     });

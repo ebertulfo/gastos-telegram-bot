@@ -66,7 +66,7 @@ describe("buildSystemPrompt", () => {
 
     it("includes standalone query scope rule", () => {
         const prompt = buildSystemPrompt("UTC", "USD");
-        expect(prompt).toContain("all categories");
+        expect(prompt).toContain("all tags");
     });
 
     it("includes response format templates", () => {
