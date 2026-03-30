@@ -83,6 +83,7 @@ export function DashboardScreen() {
           <div className="my-3 h-px" style={{ background: "var(--border)" }} />
           <TransactionList
             expenses={expenses}
+            currency={currency}
             onSelectExpense={setSelectedExpense}
           />
         </>

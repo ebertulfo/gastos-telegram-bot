@@ -90,6 +90,11 @@ async function processMessage(
       await sendTelegramChatMessage(env, telegramId, "Couldn't transcribe that voice message — try sending it again");
       return;
     }
+    // Persist transcript so Mini App can show "Heard: ..." preview
+    if (body.sourceEventId) {
+      env.DB.prepare(`UPDATE source_events SET transcript = ? WHERE id = ?`)
+        .bind(transcript, body.sourceEventId).run().catch(() => {});
+    }
     agentInput = transcript;
   } else if (body.mediaType === "photo" && body.r2ObjectKey) {
     // Photo: fetch from R2, convert to base64, create multimodal input

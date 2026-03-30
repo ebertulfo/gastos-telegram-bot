@@ -1,13 +1,14 @@
 import type { ExpenseWithDetails } from "../lib/types";
-import { groupByDate } from "../lib/format";
+import { groupByDate, formatAmountShort } from "../lib/format";
 import { TransactionRow } from "./TransactionRow";
 
 type TransactionListProps = {
   expenses: ExpenseWithDetails[];
+  currency: string;
   onSelectExpense: (expense: ExpenseWithDetails) => void;
 };
 
-export function TransactionList({ expenses, onSelectExpense }: TransactionListProps) {
+export function TransactionList({ expenses, currency, onSelectExpense }: TransactionListProps) {
   const groups = groupByDate(expenses);
 
   if (expenses.length === 0) {
@@ -20,25 +21,38 @@ export function TransactionList({ expenses, onSelectExpense }: TransactionListPr
 
   return (
     <div className="flex flex-col">
-      {groups.map((group) => (
-        <div key={group.label}>
-          <div
-            className="pb-1.5 pt-4 text-[11px] uppercase tracking-wider"
-            style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}
-          >
-            {group.label}
+      {groups.map((group) => {
+        const dayTotal = (group.expenses as ExpenseWithDetails[]).reduce((s, e) => s + e.amount_minor, 0);
+        return (
+          <div key={group.label}>
+            <div
+              className="flex items-center justify-between pb-1.5 pt-4"
+            >
+              <span
+                className="text-[11px] uppercase tracking-wider"
+                style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}
+              >
+                {group.label}
+              </span>
+              <span
+                className="text-[11px]"
+                style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}
+              >
+                {currency} {formatAmountShort(dayTotal)}
+              </span>
+            </div>
+            <div className="flex flex-col divide-y" style={{ borderColor: "var(--border-subtle)" }}>
+              {(group.expenses as ExpenseWithDetails[]).map((expense) => (
+                <TransactionRow
+                  key={expense.id}
+                  expense={expense}
+                  onClick={onSelectExpense}
+                />
+              ))}
+            </div>
           </div>
-          <div className="flex flex-col divide-y" style={{ borderColor: "var(--border-subtle)" }}>
-            {(group.expenses as ExpenseWithDetails[]).map((expense) => (
-              <TransactionRow
-                key={expense.id}
-                expense={expense}
-                onClick={onSelectExpense}
-              />
-            ))}
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

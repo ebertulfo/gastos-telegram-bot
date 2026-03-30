@@ -13,8 +13,10 @@ export type ExpenseWithDetails = {
     occurred_at_utc: string;
     status: "final" | "needs_review";
     description: string | null;
+    message_type: "text" | "photo" | "voice";
     text_raw: string | null;
     r2_object_key: string | null;
+    transcript: string | null;
     needs_review_reason: boolean;
     tags: string; // Stored as JSON string in sqlite
 };
@@ -37,8 +39,10 @@ export async function getExpenses(
        e.status,
        e.description,
        e.tags,
+       se.message_type,
        se.text_raw,
        se.r2_object_key,
+       se.transcript,
        pr.needs_review as needs_review_reason
      FROM expenses e
      JOIN source_events se ON e.source_event_id = se.id

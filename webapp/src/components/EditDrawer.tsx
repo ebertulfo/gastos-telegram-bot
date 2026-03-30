@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Drawer } from "vaul";
 import type { ExpenseWithDetails } from "../lib/types";
 import { formatAmountShort, parseTags } from "../lib/format";
-import { updateExpense, deleteExpense } from "../lib/api";
+import { updateExpense, deleteExpense, fetchMediaBlobUrl } from "../lib/api";
 import { TagInput } from "./TagInput";
 
 type EditDrawerProps = {
@@ -44,6 +44,8 @@ export function EditDrawer({ expense, allTags, onClose, onSaved }: EditDrawerPro
   const [date, setDate] = useState("");
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [receiptUrl, setReceiptUrl] = useState<string | null>(null);
+  const [showFullReceipt, setShowFullReceipt] = useState(false);
 
   const open = expense !== null;
 
@@ -55,6 +57,13 @@ export function EditDrawer({ expense, allTags, onClose, onSaved }: EditDrawerPro
       setTags(parseTags(expense.tags));
       setDate(toDateString(expense.occurred_at_utc));
       setShowDatePicker(false);
+      setReceiptUrl(null);
+      setShowFullReceipt(false);
+
+      // Load receipt image if this is a photo expense
+      if (expense.r2_object_key) {
+        fetchMediaBlobUrl(expense.source_event_id).then(setReceiptUrl);
+      }
     }
   }, [expense?.id]);
 
@@ -177,6 +186,27 @@ export function EditDrawer({ expense, allTags, onClose, onSaved }: EditDrawerPro
 
                   <div>
                     <label className="mb-1 block text-[11px] uppercase tracking-wider" style={labelStyle}>Tags</label>
+                    {/* Quick-add chips for frequent tags not already applied */}
+                    {allTags.filter(t => !tags.includes(t)).length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mb-2">
+                        {allTags.filter(t => !tags.includes(t)).slice(0, 6).map(t => (
+                          <button
+                            key={t}
+                            onClick={() => setTags([...tags, t])}
+                            className="px-2 py-0.5 text-[11px]"
+                            style={{
+                              background: "var(--bg-raised)",
+                              color: "var(--text-secondary)",
+                              borderRadius: "var(--radius-2xl)",
+                              fontFamily: "var(--font-mono)",
+                              border: "1px dashed var(--border-default)",
+                            }}
+                          >
+                            +{t}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                     <TagInput tags={tags} allTags={allTags} onChange={setTags} />
                   </div>
 
@@ -196,15 +226,47 @@ export function EditDrawer({ expense, allTags, onClose, onSaved }: EditDrawerPro
                 <div className="mt-5 pt-3.5" style={{ borderTop: "1px solid var(--border-subtle)" }}>
                   <div className="mb-1.5 text-[11px] uppercase tracking-wider" style={labelStyle}>Source</div>
                   <div className="mb-1 text-xs" style={{ color: "var(--text-muted)" }}>
-                    Logged via {sourceType} · {loggedTime}
+                    Logged via {expense.message_type ?? sourceType} · {loggedTime}
                   </div>
-                  {expense.text_raw && (
-                    <div className="px-2.5 py-2 text-xs italic"
+
+                  {/* Voice: show transcription */}
+                  {expense.transcript && (
+                    <div className="px-2.5 py-2 text-xs italic mb-2"
+                      style={{ background: "var(--bg-raised)", borderLeft: "2px solid var(--accent)", color: "var(--text-secondary)", borderRadius: "0 var(--radius-sm) var(--radius-sm) 0" }}>
+                      Heard: "{expense.transcript}"
+                    </div>
+                  )}
+
+                  {/* Text: show original message */}
+                  {!expense.transcript && expense.text_raw && (
+                    <div className="px-2.5 py-2 text-xs italic mb-2"
                       style={{ background: "var(--bg-raised)", borderLeft: "2px solid var(--border-strong)", color: "var(--text-muted)", borderRadius: "0 var(--radius-sm) var(--radius-sm) 0" }}>
                       "{expense.text_raw}"
                     </div>
                   )}
+
+                  {/* Photo: show receipt thumbnail */}
+                  {receiptUrl && (
+                    <button onClick={() => setShowFullReceipt(true)} className="block mt-2">
+                      <img
+                        src={receiptUrl}
+                        alt="Receipt"
+                        className="max-h-40 object-contain"
+                        style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)" }}
+                      />
+                    </button>
+                  )}
                 </div>
+
+                {/* Fullscreen receipt overlay */}
+                {showFullReceipt && receiptUrl && (
+                  <div
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
+                    onClick={() => setShowFullReceipt(false)}
+                  >
+                    <img src={receiptUrl} alt="Receipt" className="max-h-[90vh] max-w-[90vw] object-contain" />
+                  </div>
+                )}
 
                 <div className="mt-5">
                   <button onClick={handleSave} disabled={saving}
