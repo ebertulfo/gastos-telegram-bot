@@ -40,6 +40,7 @@ export function EditDrawer({ expense, allTags, onClose, onSaved }: EditDrawerPro
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
   const [tags, setTags] = useState<string[]>([]);
+  const [currency, setCurrency] = useState("");
   const [date, setDate] = useState("");
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -49,6 +50,7 @@ export function EditDrawer({ expense, allTags, onClose, onSaved }: EditDrawerPro
   useEffect(() => {
     if (expense) {
       setAmount(formatAmountShort(expense.amount_minor));
+      setCurrency(expense.currency);
       setDescription(expense.description || expense.text_raw || "");
       setTags(parseTags(expense.tags));
       setDate(toDateString(expense.occurred_at_utc));
@@ -67,7 +69,7 @@ export function EditDrawer({ expense, allTags, onClose, onSaved }: EditDrawerPro
       const amountMinor = Math.round(parseFloat(amount) * 100);
       await updateExpense(expense.id, {
         amount_minor: amountMinor,
-        currency: expense.currency,
+        currency,
         description,
         tags,
         occurred_at_utc: date,
@@ -137,7 +139,7 @@ export function EditDrawer({ expense, allTags, onClose, onSaved }: EditDrawerPro
                     </div>
                   </div>
                   <div className="text-2xl font-bold" style={{ color: "var(--accent)", fontFamily: "var(--font-mono)" }}>
-                    {expense.currency} {amount}
+                    {currency} {amount}
                   </div>
                 </div>
 
@@ -181,10 +183,10 @@ export function EditDrawer({ expense, allTags, onClose, onSaved }: EditDrawerPro
                   <div>
                     <label className="mb-1 block text-[11px] uppercase tracking-wider" style={labelStyle}>Amount</label>
                     <div className="flex gap-2">
-                      <div className="flex w-16 items-center justify-center border text-sm"
-                        style={{ ...inputStyle, fontFamily: "var(--font-mono)" }}>
-                        {expense.currency}
-                      </div>
+                      <input type="text" value={currency} maxLength={3}
+                        onChange={(e) => setCurrency(e.target.value.toUpperCase())}
+                        className="w-16 border px-2 py-2.5 text-sm text-center uppercase"
+                        style={{ ...inputStyle, fontFamily: "var(--font-mono)" }} />
                       <input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)}
                         className="flex-1 border px-3 py-2.5 text-sm" style={{ ...inputStyle, fontFamily: "var(--font-mono)" }} />
                     </div>

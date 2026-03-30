@@ -114,7 +114,7 @@ export function TagInput({ tags, allTags, onChange }: TagInputProps) {
             style={{
               background: "var(--background)",
               borderColor: "var(--border)",
-              top: "calc(100% + 4px)",
+              bottom: "calc(100% + 4px)",
             }}
           >
             {suggestions.map((s, i) => (
