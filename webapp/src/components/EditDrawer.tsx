@@ -46,7 +46,6 @@ export function EditDrawer({ expense, allTags, onClose, onSaved }: EditDrawerPro
 
   const open = expense !== null;
 
-  // Initialize form state when expense changes
   useEffect(() => {
     if (expense) {
       setAmount(formatAmountShort(expense.amount_minor));
@@ -58,9 +57,7 @@ export function EditDrawer({ expense, allTags, onClose, onSaved }: EditDrawerPro
   }, [expense?.id]);
 
   const handleOpen = (isOpen: boolean) => {
-    if (!isOpen) {
-      onClose();
-    }
+    if (!isOpen) onClose();
   };
 
   const handleSave = async () => {
@@ -96,117 +93,72 @@ export function EditDrawer({ expense, allTags, onClose, onSaved }: EditDrawerPro
   };
 
   const displayDescription = expense?.description || expense?.text_raw || "Unknown";
-  const sourceType = expense?.r2_object_key
-    ? "photo"
-    : expense?.text_raw
-      ? "text"
-      : "unknown";
+  const sourceType = expense?.r2_object_key ? "photo" : expense?.text_raw ? "text" : "unknown";
   const loggedTime = expense
-    ? new Date(expense.occurred_at_utc).toLocaleTimeString("en-US", {
-        hour: "numeric",
-        minute: "2-digit",
-      })
+    ? new Date(expense.occurred_at_utc).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
     : "";
-
   const presets = getPresets().filter((p) => p.value !== date);
+
+  const labelStyle = { color: "var(--text-muted)", fontFamily: "var(--font-mono)" };
+  const inputStyle = {
+    background: "var(--bg-elevated)",
+    borderColor: "var(--border-default)",
+    color: "var(--text-primary)",
+    borderRadius: "var(--radius-md)",
+  };
 
   return (
     <Drawer.Root open={open} onOpenChange={handleOpen}>
       <Drawer.Portal>
-        <Drawer.Overlay className="fixed inset-0 bg-black/40" />
+        <Drawer.Overlay className="fixed inset-0 bg-black/50" />
         <Drawer.Content
-          className="fixed bottom-0 left-0 right-0 flex flex-col rounded-t-xl max-w-full"
-          style={{ background: "var(--background)", maxHeight: "85vh", width: "100vw" }}
+          className="fixed bottom-0 left-0 right-0 flex flex-col max-w-full"
+          style={{ background: "var(--bg-base)", maxHeight: "85vh", width: "100vw", borderRadius: "var(--radius-xl) var(--radius-xl) 0 0" }}
         >
           <div className="overflow-y-auto overflow-x-hidden px-4 pb-6 pt-3">
-            {/* Drag handle */}
-            <div className="mx-auto mb-4 h-1 w-9 rounded-full" style={{ background: "var(--border)" }} />
+            <div className="mx-auto mb-4 h-1 w-9 rounded-full" style={{ background: "var(--border-strong)" }} />
 
             {expense && (
               <>
-                {/* Header */}
                 <div className="mb-5 flex items-start justify-between">
                   <div>
-                    <div className="text-xl font-bold" style={{ color: "var(--foreground)" }}>
+                    <div className="text-xl font-bold" style={{ color: "var(--text-primary)" }}>
                       {displayDescription}
                     </div>
-                    <div className="mt-0.5 text-xs" style={{ color: "var(--text-secondary)" }}>
+                    <div className="mt-0.5 text-xs" style={labelStyle}>
                       Expense #{expense.id}
                     </div>
                   </div>
-                  <div className="text-2xl font-bold" style={{ color: "var(--foreground)" }}>
+                  <div className="text-2xl font-bold" style={{ color: "var(--accent)", fontFamily: "var(--font-mono)" }}>
                     {expense.currency} {amount}
                   </div>
                 </div>
 
-                {/* Editable fields */}
                 <div className="flex flex-col gap-3.5 min-w-0">
-                  {/* Description */}
                   <div>
-                    <label className="mb-1 block text-[11px] uppercase tracking-wider" style={{ color: "var(--text-secondary)" }}>
-                      Description
-                    </label>
-                    <input
-                      type="text"
-                      value={description}
-                      onChange={(e) => setDescription(e.target.value)}
-                      className="w-full rounded-lg border px-3 py-2.5 text-sm"
-                      style={{
-                        background: "var(--surface-hover)",
-                        borderColor: "var(--border)",
-                        color: "var(--foreground)",
-                      }}
-                    />
+                    <label className="mb-1 block text-[11px] uppercase tracking-wider" style={labelStyle}>Description</label>
+                    <input type="text" value={description} onChange={(e) => setDescription(e.target.value)}
+                      className="w-full border px-3 py-2.5 text-sm" style={inputStyle} />
                   </div>
 
-                  {/* Date */}
                   <div>
-                    <label className="mb-1 block text-[11px] uppercase tracking-wider" style={{ color: "var(--text-secondary)" }}>
-                      Date
-                    </label>
-                    <button
-                      onClick={() => setShowDatePicker(!showDatePicker)}
-                      className="w-full rounded-lg border px-3 py-2.5 text-left text-sm"
-                      style={{
-                        background: "var(--surface-hover)",
-                        borderColor: "var(--border)",
-                        color: "var(--foreground)",
-                      }}
-                    >
+                    <label className="mb-1 block text-[11px] uppercase tracking-wider" style={labelStyle}>Date</label>
+                    <button onClick={() => setShowDatePicker(!showDatePicker)}
+                      className="w-full border px-3 py-2.5 text-left text-sm" style={inputStyle}>
                       {date ? formatDateDisplay(date) : "Unknown"}
                     </button>
                     {showDatePicker && (
-                      <input
-                        type="date"
-                        value={date}
-                        onChange={(e) => {
-                          setDate(e.target.value);
-                          setShowDatePicker(false);
-                        }}
-                        className="mt-1.5 w-full rounded-lg border px-3 py-2.5 text-sm box-border"
-                        style={{
-                          background: "var(--surface-hover)",
-                          borderColor: "var(--border)",
-                          color: "var(--foreground)",
-                          maxWidth: "100%",
-                        }}
-                      />
+                      <input type="date" value={date}
+                        onChange={(e) => { setDate(e.target.value); setShowDatePicker(false); }}
+                        className="mt-1.5 w-full border px-3 py-2.5 text-sm box-border" style={inputStyle} />
                     )}
                     {presets.length > 0 && (
                       <div className="mt-1.5 flex gap-1.5">
                         {presets.map((p) => (
-                          <button
-                            key={p.value}
-                            onClick={() => {
-                              setDate(p.value);
-                              setShowDatePicker(false);
-                            }}
-                            className="rounded-full px-2.5 py-1 text-[11px]"
-                            style={{
-                              background: "var(--surface)",
-                              color: "var(--text-secondary)",
-                            }}
-                          >
+                          <button key={p.value}
+                            onClick={() => { setDate(p.value); setShowDatePicker(false); }}
+                            className="px-2.5 py-1 text-[11px]"
+                            style={{ background: "var(--bg-raised)", color: "var(--text-secondary)", borderRadius: "var(--radius-2xl)", fontFamily: "var(--font-mono)" }}>
                             {p.label}
                           </button>
                         ))}
@@ -214,86 +166,44 @@ export function EditDrawer({ expense, allTags, onClose, onSaved }: EditDrawerPro
                     )}
                   </div>
 
-                  {/* Tags */}
                   <div>
-                    <label className="mb-1 block text-[11px] uppercase tracking-wider" style={{ color: "var(--text-secondary)" }}>
-                      Tags
-                    </label>
+                    <label className="mb-1 block text-[11px] uppercase tracking-wider" style={labelStyle}>Tags</label>
                     <TagInput tags={tags} allTags={allTags} onChange={setTags} />
                   </div>
 
-                  {/* Amount */}
                   <div>
-                    <label className="mb-1 block text-[11px] uppercase tracking-wider" style={{ color: "var(--text-secondary)" }}>
-                      Amount
-                    </label>
+                    <label className="mb-1 block text-[11px] uppercase tracking-wider" style={labelStyle}>Amount</label>
                     <div className="flex gap-2">
-                      <div
-                        className="flex w-16 items-center justify-center rounded-lg border text-sm"
-                        style={{
-                          background: "var(--surface-hover)",
-                          borderColor: "var(--border)",
-                          color: "var(--foreground)",
-                        }}
-                      >
+                      <div className="flex w-16 items-center justify-center border text-sm"
+                        style={{ ...inputStyle, fontFamily: "var(--font-mono)" }}>
                         {expense.currency}
                       </div>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={amount}
-                        onChange={(e) => setAmount(e.target.value)}
-                        className="flex-1 rounded-lg border px-3 py-2.5 text-sm"
-                        style={{
-                          background: "var(--surface-hover)",
-                          borderColor: "var(--border)",
-                          color: "var(--foreground)",
-                        }}
-                      />
+                      <input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)}
+                        className="flex-1 border px-3 py-2.5 text-sm" style={{ ...inputStyle, fontFamily: "var(--font-mono)" }} />
                     </div>
                   </div>
                 </div>
 
-                {/* Source section */}
-                <div className="mt-5 border-t pt-3.5" style={{ borderColor: "var(--border)" }}>
-                  <div className="mb-1.5 text-[11px] uppercase tracking-wider" style={{ color: "var(--text-secondary)" }}>
-                    Source
-                  </div>
-                  <div className="mb-1 text-xs" style={{ color: "var(--text-secondary)" }}>
+                <div className="mt-5 pt-3.5" style={{ borderTop: "1px solid var(--border-subtle)" }}>
+                  <div className="mb-1.5 text-[11px] uppercase tracking-wider" style={labelStyle}>Source</div>
+                  <div className="mb-1 text-xs" style={{ color: "var(--text-muted)" }}>
                     Logged via {sourceType} · {loggedTime}
                   </div>
                   {expense.text_raw && (
-                    <div
-                      className="rounded-md border-l-2 px-2.5 py-2 text-xs italic"
-                      style={{
-                        background: "var(--surface-hover)",
-                        borderColor: "var(--border)",
-                        color: "var(--text-secondary)",
-                      }}
-                    >
+                    <div className="px-2.5 py-2 text-xs italic"
+                      style={{ background: "var(--bg-raised)", borderLeft: "2px solid var(--border-strong)", color: "var(--text-muted)", borderRadius: "0 var(--radius-sm) var(--radius-sm) 0" }}>
                       "{expense.text_raw}"
                     </div>
                   )}
                 </div>
 
-                {/* Actions */}
                 <div className="mt-5">
-                  <button
-                    onClick={handleSave}
-                    disabled={saving}
-                    className="w-full rounded-lg py-3 text-sm font-semibold transition-opacity disabled:opacity-50"
-                    style={{
-                      background: "var(--primary)",
-                      color: "var(--primary-foreground)",
-                    }}
-                  >
+                  <button onClick={handleSave} disabled={saving}
+                    className="w-full py-3 text-sm font-semibold transition-opacity disabled:opacity-50"
+                    style={{ background: "var(--accent)", color: "var(--bg-base)", borderRadius: "var(--radius-md)" }}>
                     {saving ? "Saving..." : "Save"}
                   </button>
-                  <button
-                    onClick={handleDelete}
-                    className="mt-2 w-full py-2.5 text-sm"
-                    style={{ color: "var(--destructive)" }}
-                  >
+                  <button onClick={handleDelete} className="mt-2 w-full py-2.5 text-sm" style={{ color: "var(--danger)" }}>
                     Delete Expense
                   </button>
                 </div>

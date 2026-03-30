@@ -27,17 +27,22 @@ export function HeroTotal({ period, onPeriodChange, expenses, currency }: HeroTo
   };
 
   return (
-    <div className="text-center py-4">
+    <div className="text-center py-5">
       <button
         onClick={handleCyclePeriod}
-        className="text-[11px] uppercase tracking-wider mb-1"
-        style={{ color: "var(--text-secondary)" }}
+        className="text-[11px] uppercase tracking-wider mb-1.5"
+        style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}
       >
         {PERIOD_LABELS[period]} ▾
       </button>
       <div
-        className="text-[32px] font-bold"
-        style={{ color: "var(--foreground)", letterSpacing: "-1px" }}
+        className="text-[36px] font-bold"
+        style={{
+          color: "var(--accent)",
+          fontFamily: "var(--font-display)",
+          fontWeight: 700,
+          letterSpacing: "-1.5px",
+        }}
       >
         {currency} {formatAmountShort(totalMinor)}
       </div>

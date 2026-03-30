@@ -106,12 +106,12 @@ export function AnalyticsScreen({ drillDownCategory, onDrillDown, onBack }: Anal
       <>
         <div className="flex items-center gap-2 py-3">
           <button onClick={onBack} className="p-1">
-            <ArrowLeft size={20} color="var(--foreground)" />
+            <ArrowLeft size={20} color="var(--text-primary)" />
           </button>
-          <span className="text-lg font-semibold" style={{ color: "var(--foreground)" }}>
+          <span className="text-lg font-semibold" style={{ color: "var(--text-primary)" }}>
             #{drillDownTag}
           </span>
-          <span className="text-sm" style={{ color: "var(--text-secondary)" }}>
+          <span className="text-sm" style={{ color: "var(--text-muted)" }}>
             ({filtered.length})
           </span>
         </div>
@@ -141,11 +141,11 @@ export function AnalyticsScreen({ drillDownCategory, onDrillDown, onBack }: Anal
         </div>
       ) : error ? (
         <div className="py-12 text-center">
-          <p className="text-sm" style={{ color: "var(--text-secondary)" }}>{error}</p>
+          <p className="text-sm" style={{ color: "var(--text-muted)" }}>{error}</p>
           <button
             onClick={loadExpenses}
-            className="mt-3 rounded-lg px-4 py-2 text-sm font-medium"
-            style={{ background: "var(--accent)", color: "var(--accent-foreground)" }}
+            className="mt-3 px-4 py-2 text-sm font-medium"
+            style={{ background: "var(--accent)", color: "var(--bg-base)", borderRadius: "var(--radius-md)" }}
           >
             Retry
           </button>

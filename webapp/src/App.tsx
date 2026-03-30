@@ -7,51 +7,46 @@ import type { Tab } from "./lib/types";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
-  const [drillDownCategory, setDrillDownCategory] = useState<string | null>(null);
+  const [drillDownTag, setDrillDownTag] = useState<string | null>(null);
 
   useEffect(() => {
     WebApp.ready();
     WebApp.expand();
-
-    const updateTheme = () => {
-      document.documentElement.classList.toggle("dark", WebApp.colorScheme === "dark");
-    };
-    updateTheme();
-    WebApp.onEvent("themeChanged", updateTheme);
-    return () => WebApp.offEvent("themeChanged", updateTheme);
+    // Always dark — matches iOS app design
+    document.documentElement.classList.add("dark");
   }, []);
 
   // Back button for drill-down
   useEffect(() => {
-    if (drillDownCategory) {
+    if (drillDownTag) {
       WebApp.BackButton.show();
-      const handleBack = () => setDrillDownCategory(null);
+      const handleBack = () => setDrillDownTag(null);
       WebApp.BackButton.onClick(handleBack);
       return () => {
         WebApp.BackButton.offClick(handleBack);
         WebApp.BackButton.hide();
       };
     }
-  }, [drillDownCategory]);
+  }, [drillDownTag]);
 
   const handleTabChange = (tab: Tab) => {
-    setDrillDownCategory(null); // reset drill-down on tab switch
+    setDrillDownTag(null);
     setActiveTab(tab);
   };
 
   return (
-    <div className="flex min-h-screen flex-col" style={{ background: "var(--background)" }}>
+    <div className="flex min-h-screen flex-col" style={{ background: "var(--bg-base)" }}>
       <main className="flex-1 overflow-y-auto px-4 pb-16">
         {activeTab === "dashboard" && <DashboardScreen />}
         {activeTab === "analytics" && (
           <AnalyticsScreen
-            drillDownCategory={drillDownCategory}
-            onDrillDown={setDrillDownCategory}
-            onBack={() => setDrillDownCategory(null)}
+            drillDownCategory={drillDownTag}
+            onDrillDown={setDrillDownTag}
+            onBack={() => setDrillDownTag(null)}
           />
         )}
       </main>
-      {!drillDownCategory && (
+      {!drillDownTag && (
         <BottomNav activeTab={activeTab} onTabChange={handleTabChange} />
       )}
     </div>

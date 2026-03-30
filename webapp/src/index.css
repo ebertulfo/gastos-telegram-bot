@@ -4,41 +4,56 @@
 
 @layer base {
   :root {
-    /* Monochrome base */
-    --background: #ffffff;
-    --foreground: #111111;
-    --text-secondary: #999999;
-    --border: #f0f0f0;
-    --surface: #f3f4f6;
-    --surface-hover: #f9f9f9;
+    /* iOS-aligned dark theme — always dark */
 
-    /* Review highlight */
-    --review-bg: #fff8f8;
-    --review-badge: #dc2626;
+    /* Backgrounds */
+    --bg-base: #0D1117;
+    --bg-raised: #161D28;
+    --bg-elevated: #1C2433;
+    --bg-overlay: #222D3D;
+    --bg-nav: #111720;
 
-    /* Actions */
-    --primary: #111111;
-    --primary-foreground: #ffffff;
-    --destructive: #dc2626;
+    /* Text */
+    --text-primary: #F0F4F8;
+    --text-secondary: #8A9BB0;
+    --text-muted: #6B829E;
+
+    /* Accent */
+    --accent: #2DCC72;
+    --accent-hover: #4DDD8A;
+    --danger: #E0454A;
+    --warning: #E09A2B;
+    --info: #3A78E0;
+
+    /* Borders */
+    --border-subtle: rgba(255, 255, 255, 0.06);
+    --border-default: rgba(255, 255, 255, 0.10);
+    --border-strong: rgba(255, 255, 255, 0.18);
+    --border-accent: rgba(45, 204, 114, 0.30);
 
     /* Radius */
-    --radius: 0.5rem;
-  }
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 14px;
+    --radius-xl: 20px;
+    --radius-2xl: 28px;
 
-  .dark {
-    --background: var(--tg-theme-bg-color, #1a1a1a);
-    --foreground: var(--tg-theme-text-color, #f5f5f5);
-    --text-secondary: var(--tg-theme-hint-color, #888888);
-    --border: rgba(255, 255, 255, 0.08);
-    --surface: rgba(255, 255, 255, 0.06);
-    --surface-hover: rgba(255, 255, 255, 0.1);
+    /* Fonts */
+    --font-display: 'Sora', sans-serif;
+    --font-mono: 'DM Mono', monospace;
 
-    --review-bg: rgba(220, 38, 38, 0.08);
+    /* Legacy compat vars (used by existing components via var(--*)) */
+    --background: var(--bg-base);
+    --foreground: var(--text-primary);
+    --border: var(--border-default);
+    --surface: var(--bg-raised);
+    --surface-hover: var(--bg-elevated);
+    --primary: var(--accent);
+    --primary-foreground: #0D1117;
+    --destructive: var(--danger);
+    --review-bg: rgba(224, 69, 74, 0.08);
     --review-badge: #f87171;
-
-    --primary: var(--tg-theme-button-color, #ffffff);
-    --primary-foreground: var(--tg-theme-button-text-color, #111111);
-    --destructive: #f87171;
+    --radius: var(--radius-md);
   }
 
   * {
@@ -46,9 +61,9 @@
   }
 
   body {
-    background-color: var(--background);
-    color: var(--foreground);
-    font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+    background-color: var(--bg-base);
+    color: var(--text-primary);
+    font-family: var(--font-display);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
