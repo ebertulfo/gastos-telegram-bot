@@ -4,6 +4,7 @@ import type { ExpenseWithDetails } from "../lib/types";
 import { formatAmountShort, parseTags } from "../lib/format";
 import { updateExpense, deleteExpense } from "../lib/api";
 import { TagInput } from "./TagInput";
+import { useKeyboardOffset } from "../hooks/useKeyboardOffset";
 
 type EditDrawerProps = {
   expense: ExpenseWithDetails | null;
@@ -37,6 +38,7 @@ function formatDateDisplay(dateStr: string): string {
 }
 
 export function EditDrawer({ expense, allTags, onClose, onSaved }: EditDrawerProps) {
+  const keyboardOffset = useKeyboardOffset();
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
   const [tags, setTags] = useState<string[]>([]);
@@ -108,12 +110,19 @@ export function EditDrawer({ expense, allTags, onClose, onSaved }: EditDrawerPro
   };
 
   return (
-    <Drawer.Root open={open} onOpenChange={handleOpen}>
+    <Drawer.Root open={open} onOpenChange={handleOpen} repositionInputs={false}>
       <Drawer.Portal>
         <Drawer.Overlay className="fixed inset-0 bg-black/50" />
         <Drawer.Content
           className="fixed bottom-0 left-0 right-0 flex flex-col max-w-full"
-          style={{ background: "var(--bg-base)", maxHeight: "85vh", width: "100vw", borderRadius: "var(--radius-xl) var(--radius-xl) 0 0" }}
+          style={{
+            background: "var(--bg-base)",
+            maxHeight: "85dvh",
+            width: "100vw",
+            borderRadius: "var(--radius-xl) var(--radius-xl) 0 0",
+            bottom: `${keyboardOffset}px`,
+            transition: "bottom 0.25s ease-out",
+          }}
         >
           <div className="overflow-y-auto overflow-x-hidden px-4 pb-6 pt-3">
             <div className="mx-auto mb-4 h-1 w-9 rounded-full" style={{ background: "var(--border-strong)" }} />

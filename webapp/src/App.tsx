@@ -13,19 +13,6 @@ export default function App() {
     WebApp.ready();
     WebApp.expand();
     document.documentElement.classList.add("dark");
-
-    // iOS Telegram WebView: keyboard overlaps content without resizing viewport.
-    // Scroll the focused input into view after keyboard animation completes.
-    const handleFocusIn = (e: FocusEvent) => {
-      const target = e.target as HTMLElement;
-      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT") {
-        setTimeout(() => {
-          target.scrollIntoView({ block: "center", behavior: "smooth" });
-        }, 300);
-      }
-    };
-    document.addEventListener("focusin", handleFocusIn);
-    return () => document.removeEventListener("focusin", handleFocusIn);
   }, []);
 
   // Back button for drill-down
