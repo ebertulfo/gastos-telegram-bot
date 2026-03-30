@@ -20,6 +20,8 @@ export const MOCK_EXPENSES: ExpenseWithDetails[] = [
     text_raw: "lunch at hawker center",
     r2_object_key: null,
     needs_review_reason: false,
+    message_type: "text" as const,
+    transcript: null,
     tags: '["food","lunch"]',
   },
   {
@@ -33,6 +35,8 @@ export const MOCK_EXPENSES: ExpenseWithDetails[] = [
     text_raw: "grab to office",
     r2_object_key: null,
     needs_review_reason: true,
+    message_type: "text" as const,
+    transcript: null,
     tags: '["transport"]',
   },
   {
@@ -46,6 +50,8 @@ export const MOCK_EXPENSES: ExpenseWithDetails[] = [
     text_raw: "dinner with friends",
     r2_object_key: null,
     needs_review_reason: false,
+    message_type: "text" as const,
+    transcript: null,
     tags: '["food","entertainment"]',
   },
   {
@@ -59,6 +65,8 @@ export const MOCK_EXPENSES: ExpenseWithDetails[] = [
     text_raw: null,
     r2_object_key: "receipts/104.jpg",
     needs_review_reason: false,
+    message_type: "text" as const,
+    transcript: null,
     tags: '["shopping"]',
   },
   {
@@ -72,6 +80,8 @@ export const MOCK_EXPENSES: ExpenseWithDetails[] = [
     text_raw: "mrt top up",
     r2_object_key: null,
     needs_review_reason: false,
+    message_type: "text" as const,
+    transcript: null,
     tags: '["transport"]',
   },
   {
@@ -85,6 +95,8 @@ export const MOCK_EXPENSES: ExpenseWithDetails[] = [
     text_raw: "rent march",
     r2_object_key: null,
     needs_review_reason: false,
+    message_type: "text" as const,
+    transcript: null,
     tags: '["bills","rent"]',
   },
   {
@@ -98,6 +110,8 @@ export const MOCK_EXPENSES: ExpenseWithDetails[] = [
     text_raw: "movie tickets",
     r2_object_key: null,
     needs_review_reason: false,
+    message_type: "text" as const,
+    transcript: null,
     tags: '["entertainment"]',
   },
   {
@@ -111,6 +125,8 @@ export const MOCK_EXPENSES: ExpenseWithDetails[] = [
     text_raw: "clinic visit",
     r2_object_key: null,
     needs_review_reason: false,
+    message_type: "text" as const,
+    transcript: null,
     tags: '["health"]',
   },
   {
@@ -124,6 +140,8 @@ export const MOCK_EXPENSES: ExpenseWithDetails[] = [
     text_raw: "grocery run",
     r2_object_key: null,
     needs_review_reason: false,
+    message_type: "text" as const,
+    transcript: null,
     tags: '["groceries"]',
   },
   {
@@ -137,6 +155,8 @@ export const MOCK_EXPENSES: ExpenseWithDetails[] = [
     text_raw: "some random charge",
     r2_object_key: null,
     needs_review_reason: true,
+    message_type: "text" as const,
+    transcript: null,
     tags: "[]",
   },
 ];

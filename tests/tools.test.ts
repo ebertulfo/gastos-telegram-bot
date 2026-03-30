@@ -260,6 +260,8 @@ describe("createAgentTools", () => {
         text_raw: null,
         r2_object_key: null,
         needs_review_reason: false,
+        message_type: "text" as const,
+        transcript: null,
       },
     ]);
 
@@ -372,6 +374,8 @@ describe("createAgentTools", () => {
         text_raw: null,
         r2_object_key: null,
         needs_review_reason: false,
+        message_type: "text" as const,
+        transcript: null,
       },
     ]);
 
@@ -401,6 +405,8 @@ describe("createAgentTools", () => {
         text_raw: null,
         r2_object_key: null,
         needs_review_reason: false,
+        message_type: "text" as const,
+        transcript: null,
       },
     ]);
 
@@ -556,6 +562,8 @@ describe("createAgentTools", () => {
         text_raw: null,
         r2_object_key: null,
         needs_review_reason: false,
+        message_type: "text" as const,
+        transcript: null,
       },
     ]);
 

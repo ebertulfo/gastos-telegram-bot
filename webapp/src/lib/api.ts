@@ -62,6 +62,19 @@ export async function fetchUserTags(): Promise<string[]> {
     return json.tags;
 }
 
+export async function fetchMediaBlobUrl(sourceEventId: number): Promise<string | null> {
+    try {
+        const res = await fetch(`${API_BASE_URL}/media/${sourceEventId}`, {
+            headers: { Authorization: `Telegram ${WebApp.initData || ""}` },
+        });
+        if (!res.ok) return null;
+        const blob = await res.blob();
+        return URL.createObjectURL(blob);
+    } catch {
+        return null;
+    }
+}
+
 export async function deleteExpense(id: number) {
     const res = await fetch(`${API_BASE_URL}/expenses/${id}`, {
         method: "DELETE",

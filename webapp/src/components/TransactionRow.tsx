@@ -1,3 +1,4 @@
+import { Mic, Camera, Type } from "lucide-react";
 import type { ExpenseWithDetails } from "../lib/types";
 import { getTagConfig } from "../lib/categories";
 import { formatAmountShort, relativeTime, parseTags } from "../lib/format";
@@ -7,12 +8,19 @@ type TransactionRowProps = {
   onClick: (expense: ExpenseWithDetails) => void;
 };
 
+const SOURCE_ICONS = {
+  voice: Mic,
+  photo: Camera,
+  text: Type,
+} as const;
+
 export function TransactionRow({ expense, onClick }: TransactionRowProps) {
   const tags = parseTags(expense.tags);
   const description = expense.description || expense.text_raw || "Unknown";
   const isReview = expense.status === "needs_review";
   const primaryTag = tags[0];
   const tagConfig = primaryTag ? getTagConfig(primaryTag) : null;
+  const SourceIcon = SOURCE_ICONS[expense.message_type] ?? Type;
 
   return (
     <button
@@ -27,7 +35,7 @@ export function TransactionRow({ expense, onClick }: TransactionRowProps) {
     >
       <div className="flex items-center gap-3 min-w-0">
         <div
-          className="flex h-9 w-9 shrink-0 items-center justify-center text-[10px] font-medium"
+          className="relative flex h-9 w-9 shrink-0 items-center justify-center text-[10px] font-medium"
           style={{
             background: tagConfig ? `${tagConfig.color}18` : "var(--bg-raised)",
             color: tagConfig?.color ?? "var(--text-muted)",
@@ -36,6 +44,11 @@ export function TransactionRow({ expense, onClick }: TransactionRowProps) {
           }}
         >
           {primaryTag ? primaryTag.slice(0, 3) : "..."}
+          <SourceIcon
+            size={10}
+            className="absolute -bottom-0.5 -right-0.5"
+            style={{ color: "var(--text-muted)" }}
+          />
         </div>
         <div className="min-w-0">
           <div className="flex items-center gap-1.5">

@@ -4,6 +4,7 @@ import { PeriodToggle } from "../components/PeriodToggle";
 import { DonutChart } from "../components/DonutChart";
 import { CategoryList, type CategoryTotal } from "../components/CategoryList";
 import { TransactionList } from "../components/TransactionList";
+import { TransactionRow } from "../components/TransactionRow";
 import { EditDrawer } from "../components/EditDrawer";
 import { Skeleton } from "../components/ui/skeleton";
 import { fetchExpenses, fetchUserProfile, fetchUserTags } from "../lib/api";
@@ -115,7 +116,7 @@ export function AnalyticsScreen({ drillDownCategory, onDrillDown, onBack }: Anal
             ({filtered.length})
           </span>
         </div>
-        <TransactionList expenses={filtered} onSelectExpense={setSelectedExpense} />
+        <TransactionList expenses={filtered} currency={currency} onSelectExpense={setSelectedExpense} />
         <EditDrawer
           expense={selectedExpense}
           allTags={allTags}
@@ -168,6 +169,22 @@ export function AnalyticsScreen({ drillDownCategory, onDrillDown, onBack }: Anal
               onCategoryClick={onDrillDown}
             />
           </div>
+          {expenses.length > 0 && (
+            <div className="mt-6">
+              <div
+                className="pb-2 text-[11px] uppercase tracking-wider"
+                style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}
+              >
+                Top Expenses
+              </div>
+              {[...expenses]
+                .sort((a, b) => b.amount_minor - a.amount_minor)
+                .slice(0, 3)
+                .map((e) => (
+                  <TransactionRow key={e.id} expense={e} onClick={setSelectedExpense} />
+                ))}
+            </div>
+          )}
         </>
       )}
 

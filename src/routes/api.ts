@@ -100,6 +100,35 @@ apiRouter.get("/tags", async (c) => {
     return c.json({ tags });
 });
 
+// Serve receipt media from R2 (auth-gated, user must own the expense)
+apiRouter.get("/media/:sourceEventId", async (c) => {
+    const sourceEventId = parseInt(c.req.param("sourceEventId"), 10);
+    if (isNaN(sourceEventId)) {
+        return c.json({ error: "Invalid source event ID" }, 400);
+    }
+
+    // Verify user owns this expense
+    const row = await c.env.DB.prepare(
+        `SELECT se.r2_object_key FROM expenses e
+         JOIN source_events se ON e.source_event_id = se.id
+         WHERE se.id = ? AND e.user_id = ?`
+    ).bind(sourceEventId, c.get("userId")).first<{ r2_object_key: string | null }>();
+
+    if (!row?.r2_object_key) {
+        return c.json({ error: "Not found" }, 404);
+    }
+
+    const object = await c.env.MEDIA_BUCKET.get(row.r2_object_key);
+    if (!object) {
+        return c.json({ error: "Media not found" }, 404);
+    }
+
+    const headers = new Headers();
+    headers.set("Content-Type", object.httpMetadata?.contentType ?? "image/jpeg");
+    headers.set("Cache-Control", "private, max-age=3600");
+    return new Response(object.body, { headers });
+});
+
 apiRouter.put("/expenses/:id", async (c) => {
     const expenseId = parseInt(c.req.param("id"), 10);
     if (isNaN(expenseId)) {
