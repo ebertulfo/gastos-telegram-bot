@@ -5,9 +5,6 @@ const OpenAIResponseSchema = z.object({
   amount: z.number().nullable().optional(),
   currency: z.string().nullable().optional(),
   description: z.string().nullable().optional(),
-  category: z.enum([
-    "Food", "Transport", "Housing", "Shopping", "Entertainment", "Health", "Other"
-  ]).nullable().optional(),
   tags: z.array(z.string()).nullable().optional(),
   confidence: z.number().nullable().optional()
 });
@@ -15,7 +12,6 @@ const OpenAIResponseSchema = z.object({
 export type OpenAIExtraction = {
   amountMinor: number | null;
   currency: string | null;
-  category: string;
   tags: string[];
   confidence: number;
   needsReview: boolean;
@@ -94,11 +90,11 @@ export async function getHistoricalContext(env: Env, userId: number, text: strin
       return "";
     }
 
-    let context = "\nHere are 3 of the user's most similar historical expenses. You MUST analyze these past decisions and align your current extraction (especially the Category and Tags) to match their historical precedent:\n";
+    let context = "\nHere are 3 of the user's most similar historical expenses. Align your current extraction (especially tags) to match their historical precedent:\n";
     for (const match of results.matches) {
       if (match.metadata) {
         const m = match.metadata as any;
-        context += `- Raw Text: "${m.raw_text}" -> Parsed as: [${m.category}]. Tags: ${m.tags}.\n`;
+        context += `- Raw Text: "${m.raw_text}" -> Tags: ${m.tags}.\n`;
       }
     }
     return context;
@@ -155,7 +151,7 @@ export async function extractAmountCurrencyFromText(
       content: [
         {
           type: "text",
-          text: `${localeContext}${historicalContext}\nExtract the total amount, currency, a short description, category, and tags from this transcribed message. The user might spell out numbers (e.g. "five dollars"). Convert it to digits. If the user says a generic currency word like "dollars" or "$", assume it means their default currency. CRITICAL: If the message contains a standalone number (e.g. "13 grab", "lunch 5.50", "20"), YOU MUST extract that number as the amount even if there is no explicit currency symbol present.\nReturn strict JSON with keys: amount (number or null), currency (3-letter ISO code or null), description (string, max 3 words), category (MUST be exactly one of: Food, Transport, Housing, Shopping, Entertainment, Health, Other), tags (array of 1-3 lowercase string contexts, e.g. ["coffee", "starbucks"]), confidence (0-1).`
+          text: `${localeContext}${historicalContext}\nExtract the total amount, currency, a short description, and tags from this transcribed message. The user might spell out numbers (e.g. "five dollars"). Convert it to digits. If the user says a generic currency word like "dollars" or "$", assume it means their default currency. CRITICAL: If the message contains a standalone number (e.g. "13 grab", "lunch 5.50", "20"), YOU MUST extract that number as the amount even if there is no explicit currency symbol present.\nReturn strict JSON with keys: amount (number or null), currency (3-letter ISO code or null), description (string, max 3 words), tags (array of 1-3 lowercase tags, e.g. ["coffee", "food"]), confidence (0-1).`
         },
         { type: "text", text }
       ]
@@ -165,14 +161,13 @@ export async function extractAmountCurrencyFromText(
   const result = await callOpenAIExtraction(env, messages, "text extraction");
   if (!result) return null;
 
-  const { amountMinor, currency, description, category, tags, confidence } = mapExtractionFields(result);
+  const { amountMinor, currency, description, tags, confidence } = mapExtractionFields(result);
   return {
     amountMinor,
     currency,
-    category,
     tags,
     confidence,
-    needsReview: confidence < 0.9 || amountMinor === null || currency === null || category === "Other",
+    needsReview: confidence < 0.9 || amountMinor === null || currency === null,
     metadata: { source: "openai_text", originalText: text, description }
   };
 }
@@ -203,7 +198,7 @@ export async function extractAmountCurrencyFromR2Image(
       content: [
         {
           type: "text",
-          text: `${localeContext}${historicalContext}\nExtract the total amount, currency, a short description, category, and tags from this receipt image. If the receipt shows a generic symbol like "$" or "dollars", assume it means their default currency. CRITICAL: If the receipt only has a prominent number without a currency symbol, YOU MUST extract that number as the amount.\nReturn strict JSON with keys: amount (number or null), currency (3-letter ISO code or null), description (string, max 3 words), category (MUST be exactly one of: Food, Transport, Housing, Shopping, Entertainment, Health, Other), tags (array of 1-3 lowercase string contexts, e.g. ["coffee", "starbucks"]), confidence (0-1).`
+          text: `${localeContext}${historicalContext}\nExtract the total amount, currency, a short description, and tags from this receipt image. If the receipt shows a generic symbol like "$" or "dollars", assume it means their default currency. CRITICAL: If the receipt only has a prominent number without a currency symbol, YOU MUST extract that number as the amount.\nReturn strict JSON with keys: amount (number or null), currency (3-letter ISO code or null), description (string, max 3 words), tags (array of 1-3 lowercase tags, e.g. ["coffee", "food"]), confidence (0-1).`
         },
         { type: "image_url", image_url: { url: dataUrl } }
       ]
@@ -213,14 +208,13 @@ export async function extractAmountCurrencyFromR2Image(
   const result = await callOpenAIExtraction(env, messages, "vision extraction", 500);
   if (!result) return null;
 
-  const { amountMinor, currency, description, category, tags, confidence } = mapExtractionFields(result);
+  const { amountMinor, currency, description, tags, confidence } = mapExtractionFields(result);
   return {
     amountMinor,
     currency,
-    category,
     tags,
     confidence,
-    needsReview: confidence < 0.9 || amountMinor === null || currency === null || category === "Other",
+    needsReview: confidence < 0.9 || amountMinor === null || currency === null,
     metadata: { source: "openai_vision", r2ObjectKey, description }
   };
 }
@@ -278,20 +272,18 @@ function mapExtractionFields(data: z.infer<typeof OpenAIResponseSchema>): {
   amountMinor: number | null;
   currency: string | null;
   description: string | null;
-  category: string;
   tags: string[];
   confidence: number;
 } {
-  const { amount: rawAmount, currency: rawCurrency, description: rawDescription, category: rawCategory, tags: rawTags, confidence: rawConfidence } = data;
+  const { amount: rawAmount, currency: rawCurrency, description: rawDescription, tags: rawTags, confidence: rawConfidence } = data;
 
   const amountMinor = typeof rawAmount === "number" && Number.isFinite(rawAmount) ? Math.round(rawAmount * 100) : null;
   const currency = typeof rawCurrency === "string" && /^[A-Z]{3}$/.test(rawCurrency.toUpperCase()) ? rawCurrency.toUpperCase() : null;
   const description = typeof rawDescription === "string" ? rawDescription.trim() : null;
-  const category = typeof rawCategory === "string" ? rawCategory : "Other";
   const tags = Array.isArray(rawTags) ? rawTags : [];
   const confidence = typeof rawConfidence === "number" && Number.isFinite(rawConfidence) ? clamp(rawConfidence, 0, 1) : 0.5;
 
-  return { amountMinor, currency, description, category, tags, confidence };
+  return { amountMinor, currency, description, tags, confidence };
 }
 
 function extractOutputText(response: any): string | null {
