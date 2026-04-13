@@ -109,19 +109,17 @@ async function processMessage(
       return;
     }
     const bytes = new Uint8Array(await object.arrayBuffer());
-    const mime = object.httpMetadata?.contentType ?? "image/jpeg";
+    const rawMime = object.httpMetadata?.contentType;
+    const mime = rawMime && rawMime.startsWith("image/") ? rawMime : "image/jpeg";
     const base64 = arrayBufferToBase64(bytes);
     const dataUrl = `data:${mime};base64,${base64}`;
 
-    const content: Array<{ type: "input_image"; image: string } | { type: "input_text"; text: string }> = [
-      { type: "input_image", image: dataUrl },
-    ];
-    // Include caption text if provided
-    if (body.text) {
-      content.push({ type: "input_text", text: body.text });
-    }
+    const content: Array<{ type: "input_image"; image: string } | { type: "input_text"; text: string }> = [];
+    // Text before image (OpenAI requires text first when mixing)
+    content.push({ type: "input_text", text: body.text ?? "Extract the expense from this receipt" });
+    content.push({ type: "input_image", image: dataUrl });
 
-    agentInput = [{ role: "user" as const, content }];
+    agentInput = [{ role: "user" as const, type: "message" as const, content }];
     inputSummaryForLog = body.text ? `[photo] ${body.text}` : "[photo]";
   } else {
     // Text message
@@ -148,7 +146,8 @@ async function processMessage(
     : undefined;
 
   // 5. Create agent and session
-  const agent = createGastosAgent(env, userId, telegramId, timezone, currency, recentExpensesContext, body.sourceEventId, userTopTags);
+  const hasImage = body.mediaType === "photo";
+  const agent = createGastosAgent(env, userId, telegramId, timezone, currency, recentExpensesContext, body.sourceEventId, userTopTags, hasImage);
   const session = new D1Session(env.DB, userId);
 
   // 6. Run the agent (streaming)
@@ -181,14 +180,19 @@ async function processMessage(
       if (err && typeof err === "object" && "state" in err && err.state) {
         try {
           return await run(agent, err.state as any);
-        } catch {
+        } catch (retryErr) {
+          const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr);
+          console.error("Agent retry also failed", { error: retryMsg });
+          tracer.record(traceId, "ai.agent_error", userId, 0, { error: retryMsg, phase: "retry" });
           await sendTelegramChatMessage(env, telegramId, "Something went wrong — try again");
           return null;
         }
       } else {
         // Ack instead of retry: without a DLQ, retrying persistent errors leads to
         // silent drops after 3 attempts. Prefer user notification over silent failure.
-        console.error("Agent run failed without state", { error: err instanceof Error ? err.message : String(err) });
+        const errMsg = err instanceof Error ? `${err.message}\n${err.stack}` : String(err);
+        console.error("Agent run failed without state", { error: errMsg });
+        tracer.record(traceId, "ai.agent_error", userId, 0, { error: errMsg });
         await sendTelegramChatMessage(env, telegramId, "Something went wrong — try again");
         return null;
       }
@@ -219,35 +223,46 @@ async function processMessage(
     });
   }
 
-  // 7b. Extract reply text (needed by both audit log and finalize)
-  const reply = result.finalOutput || "";
+  // 7b. Extract reply text and tool calls
+  let reply = result.finalOutput || "";
 
-  // 7c. Audit log — capture LLM call details for debugging (fire-and-forget)
+  const toolCalls: Array<{name: string; input: string}> = [];
+  for (const r of result.rawResponses) {
+    const output = (r as any).output;
+    if (Array.isArray(output)) {
+      for (const item of output) {
+        if (item.type === "function_call") {
+          toolCalls.push({ name: item.name, input: item.arguments ?? "" });
+        }
+      }
+    }
+  }
+
+  // 7c. Hallucination guard: if the reply looks like a tool confirmation
+  // but no tools were actually called, replace with an error message
+  const CONFIRMATION_PATTERN = /^(Logged |Updated |Deleted )/m;
+  if (CONFIRMATION_PATTERN.test(reply) && toolCalls.length === 0) {
+    console.warn(`[HALLUCINATION] Agent faked tool confirmation without calling tools`, {
+      traceId, userId, reply: reply.slice(0, 100),
+    });
+    reply = "I couldn't process that properly — please try sending it again";
+  }
+
+  // 7d. Audit log — capture LLM call details for debugging (fire-and-forget)
+  const anomalies: string[] = [];
+  if (!reply) anomalies.push("empty_response");
+  if (result.rawResponses.length > 5) anomalies.push("excessive_turns");
+  if (CONFIRMATION_PATTERN.test(result.finalOutput || "") && toolCalls.length === 0) anomalies.push("hallucinated_confirmation");
+
   ctx.waitUntil((async () => {
     try {
       const { insertAuditLog } = await import("./db/audit-log");
-
-      const toolCalls: Array<{name: string; input: string}> = [];
-      for (const r of result.rawResponses) {
-        const output = (r as any).output;
-        if (Array.isArray(output)) {
-          for (const item of output) {
-            if (item.type === "function_call") {
-              toolCalls.push({ name: item.name, input: item.arguments ?? "" });
-            }
-          }
-        }
-      }
-
-      const anomalies: string[] = [];
-      if (!reply) anomalies.push("empty_response");
-      if (result.rawResponses.length > 5) anomalies.push("excessive_turns");
 
       await insertAuditLog(env.DB, {
         trace_id: traceId,
         user_id: userId,
         messages_sent: inputSummaryForLog,
-        response_received: reply,
+        response_received: result.finalOutput || "",
         tool_calls: toolCalls.length > 0 ? JSON.stringify(toolCalls) : null,
         total_tokens: totalTokens,
         latency_ms: agentLatencyMs,

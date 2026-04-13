@@ -151,7 +151,7 @@ CONTEXT:
  * Creates a configured Gastos SDK Agent with tools bound to the authenticated user.
  * The agent handles both expense logging and financial Q&A in a unified flow.
  */
-export function createGastosAgent(env: Env, userId: number, telegramId: number, timezone: string, currency: string, recentExpensesContext?: string, sourceEventId?: number, userTopTags?: string[]) {
+export function createGastosAgent(env: Env, userId: number, telegramId: number, timezone: string, currency: string, recentExpensesContext?: string, sourceEventId?: number, userTopTags?: string[], hasImage?: boolean) {
     const tools = createAgentTools(env, userId, telegramId, timezone, currency, sourceEventId);
 
     return new Agent({
@@ -160,7 +160,8 @@ export function createGastosAgent(env: Env, userId: number, telegramId: number, 
         instructions: buildSystemPrompt(timezone, currency, recentExpensesContext, userTopTags),
         tools,
         modelSettings: {
-            reasoning: { effort: "minimal" },
+            // Images need more reasoning effort to reliably call tools
+            reasoning: { effort: hasImage ? "low" : "minimal" },
         },
     });
 }
