@@ -79,6 +79,7 @@ async function processMessage(
 
   // 3. Pre-process media into agent input
   let agentInput: string | AgentInputItem[];
+  let inputSummaryForLog: string; // Redacted version for audit log (no base64 blobs)
 
   if (body.mediaType === "voice" && body.r2ObjectKey) {
     // Voice: transcribe via Whisper, then pass transcript as string
@@ -96,6 +97,7 @@ async function processMessage(
         .bind(transcript, body.sourceEventId).run().catch(() => {});
     }
     agentInput = transcript;
+    inputSummaryForLog = transcript;
   } else if (body.mediaType === "photo" && body.r2ObjectKey) {
     // Photo: fetch from R2, convert to base64, create multimodal input
     let object: R2ObjectBody | null;
@@ -120,9 +122,11 @@ async function processMessage(
     }
 
     agentInput = [{ role: "user" as const, content }];
+    inputSummaryForLog = body.text ? `[photo] ${body.text}` : "[photo]";
   } else {
     // Text message
     agentInput = body.text ?? "";
+    inputSummaryForLog = agentInput;
   }
 
   // 4. Fetch recent expenses + top tags for agent context
@@ -194,11 +198,13 @@ async function processMessage(
   // IMPORTANT: Preserve agentTraceProcessor context — this wraps the span so
   // ai.turn and ai.tool sub-spans from AgentTraceProcessor are attributed correctly
   agentTraceProcessor.setContext(traceId, userId, tracer);
+  const agentStartMs = Date.now();
   try {
     result = await tracer.span(traceId, "ai.semantic_chat", userId, runAgent, { model: "gpt-5-mini" });
   } finally {
     agentTraceProcessor.clearContext();
   }
+  const agentLatencyMs = Date.now() - agentStartMs;
 
   if (!result) return;
 
@@ -213,8 +219,46 @@ async function processMessage(
     });
   }
 
-  // 8. Finalize streaming reply
+  // 7b. Extract reply text (needed by both audit log and finalize)
   const reply = result.finalOutput || "";
+
+  // 7c. Audit log — capture LLM call details for debugging (fire-and-forget)
+  ctx.waitUntil((async () => {
+    try {
+      const { insertAuditLog } = await import("./db/audit-log");
+
+      const toolCalls: Array<{name: string; input: string}> = [];
+      for (const r of result.rawResponses) {
+        const output = (r as any).output;
+        if (Array.isArray(output)) {
+          for (const item of output) {
+            if (item.type === "function_call") {
+              toolCalls.push({ name: item.name, input: item.arguments ?? "" });
+            }
+          }
+        }
+      }
+
+      const anomalies: string[] = [];
+      if (!reply) anomalies.push("empty_response");
+      if (result.rawResponses.length > 5) anomalies.push("excessive_turns");
+
+      await insertAuditLog(env.DB, {
+        trace_id: traceId,
+        user_id: userId,
+        messages_sent: inputSummaryForLog,
+        response_received: reply,
+        tool_calls: toolCalls.length > 0 ? JSON.stringify(toolCalls) : null,
+        total_tokens: totalTokens,
+        latency_ms: agentLatencyMs,
+        anomaly_flags: anomalies.length > 0 ? JSON.stringify(anomalies) : null,
+      });
+    } catch (err) {
+      console.error("Audit log insert failed", err instanceof Error ? err.message : String(err));
+    }
+  })());
+
+  // 8. Finalize streaming reply
   await tracer.span(traceId, "telegram.send_reply", userId, async () => {
     await manager.finalize(reply);
   });

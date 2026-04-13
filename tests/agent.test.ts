@@ -141,6 +141,16 @@ describe("buildSystemPrompt", () => {
         const prompt = buildSystemPrompt("UTC", "USD");
         expect(prompt).toContain("English");
     });
+
+    it("includes rule against mentioning tool names in responses", () => {
+        const prompt = buildSystemPrompt("UTC", "USD");
+        expect(prompt).toContain("NEVER mention tool names");
+    });
+
+    it("includes rule against referencing amounts from context", () => {
+        const prompt = buildSystemPrompt("UTC", "USD");
+        expect(prompt).toContain("do not reference or repeat amounts");
+    });
 });
 
 describe("createGastosAgent", () => {
