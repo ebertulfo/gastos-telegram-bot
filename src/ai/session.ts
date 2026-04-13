@@ -8,6 +8,17 @@ import {
 } from "../db/chat-history";
 
 /**
+ * Tool confirmation prefixes that should be filtered from agent context.
+ * These cause the model to pattern-match instead of calling tools.
+ */
+const CONFIRMATION_PREFIXES = ["Logged ", "Updated ", "Deleted "];
+
+function isToolConfirmation(role: string, text: string): boolean {
+    if (role !== "assistant") return false;
+    return CONFIRMATION_PREFIXES.some(prefix => text.startsWith(prefix));
+}
+
+/**
  * Maps a D1 chat_history row to an AgentInputItem.
  */
 function rowToItem(row: { role: ChatRole; content: string }): AgentInputItem {
@@ -83,17 +94,21 @@ export class D1Session implements Session {
             this.userId,
             limit ?? this.defaultLimit
         );
-        return history.map(rowToItem);
+        return history
+            .filter(row => !isToolConfirmation(row.role, row.content))
+            .map(rowToItem);
     }
 
     async addItems(items: AgentInputItem[]): Promise<void> {
-        for (const item of items) {
-            const role = extractRole(item);
-            const text = extractText(item);
-            if (role && text) {
-                await insertChatMessage(this.db, this.userId, role, text);
-            }
-        }
+        const writes = items
+            .map(item => ({ role: extractRole(item), text: extractText(item) }))
+            .filter((w): w is { role: ChatRole; text: string } =>
+                !!w.role && !!w.text && !isToolConfirmation(w.role, w.text)
+            );
+
+        await Promise.all(
+            writes.map(w => insertChatMessage(this.db, this.userId, w.role, w.text))
+        );
     }
 
     async popItem(): Promise<AgentInputItem | undefined> {

@@ -1,7 +1,7 @@
 # Gastos Telegram Bot
 
 ## Commands
-- `npm run test` — run full test suite (vitest, 16 files, 142 tests)
+- `npm run test` — run full test suite (vitest, 19 files, 212 tests)
 - `npm run check` — TypeScript type check only (tsc --noEmit)
 - `npm run check && npm run test` — standard verification after any change
 - `npm run dev` — local dev server (wrangler dev)
@@ -19,7 +19,7 @@
 - `Env` type lives in `src/types.ts` — add new Cloudflare bindings/env vars there first
 - All DB queries inject `user_id` from auth context — LLM tools must never accept userId from user input
 - `response_format: { type: "json_object" }` used on all OpenAI extraction calls
-- `db/` functions take `D1Database` directly (not `Env`) — current files: expenses, users, chat-history, quotas, source-events, parse-results, notifications
+- `db/` functions take `D1Database` directly (not `Env`) — current files: expenses, users, chat-history, quotas, source-events, parse-results, notifications, feedback, tag-preferences, audit-log
 - Use `z.infer<typeof Schema>` to type helper return values — avoids duplicating Zod schema shapes as manual types
 
 ## Testing
@@ -28,6 +28,7 @@
 - Pure deletion/cleanup tasks don't need new tests; existing suite is sufficient as regression guard
 - Webhook test `createMockDb` has order-sensitive `prepare()` branches — more specific query matchers (e.g. content dedup) must come before generic ones (e.g. `SELECT id FROM source_events`)
 - `tools.test.ts` mocks `../src/totals` — when adding new exports from totals.ts, update the mock to use `importOriginal` pattern to preserve real implementations
+- `tools.test.ts` has date-dependent tests with hardcoded dates — these fail when the dates fall outside the 30-day validation window; update the test dates if they start failing
 - `npx wrangler d1 execute gastos-db --remote --command "SQL"` — query prod D1 for debugging
 
 ## Workflow

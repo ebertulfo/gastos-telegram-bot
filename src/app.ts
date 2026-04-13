@@ -176,6 +176,28 @@ export function createApp() {
     const sumMs = (results ?? []).reduce((sum: number, r: any) => sum + (r.duration_ms ?? 0), 0);
     return c.json({ traceId, spans: results, sumMs });
   });
+  app.get("/debug/audit/recent", async (c) => {
+    const { getRecentAuditLogs } = await import("./db/audit-log");
+    const limit = Math.min(parseInt(c.req.query("limit") ?? "20"), 100);
+    const logs = await getRecentAuditLogs(c.env.DB, limit);
+    return c.json({ count: logs.length, logs });
+  });
+
+  app.get("/debug/audit/anomalies", async (c) => {
+    const { getAnomalousAuditLogs } = await import("./db/audit-log");
+    const limit = Math.min(parseInt(c.req.query("limit") ?? "20"), 100);
+    const logs = await getAnomalousAuditLogs(c.env.DB, limit);
+    return c.json({ count: logs.length, logs });
+  });
+
+  app.get("/debug/audit/:traceId", async (c) => {
+    const { getAuditLogByTraceId } = await import("./db/audit-log");
+    const traceId = c.req.param("traceId");
+    const log = await getAuditLogByTraceId(c.env.DB, traceId);
+    if (!log) return c.json({ error: "Not found" }, 404);
+    return c.json(log);
+  });
+
   // ── END DEBUG ENDPOINTS ────────────────────────────────────────────
 
   app.get("/openapi.json", (c) => c.json(buildOpenApiSpec(new URL(c.req.url).origin)));

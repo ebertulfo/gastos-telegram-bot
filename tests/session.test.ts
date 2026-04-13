@@ -90,6 +90,48 @@ describe("D1Session", () => {
             await session.getItems();
             expect(bind).toHaveBeenCalledWith(42, 20);
         });
+
+        it("filters out 'Logged ...' confirmations from history", async () => {
+            const { db } = mockDb([
+                { role: "user", content: "coffee 5" },
+                { role: "assistant", content: "Logged SGD 5.00 — Coffee (coffee, food)" },
+                { role: "user", content: "how much today?" },
+            ]);
+            const session = new D1Session(db, 42);
+            const items = await session.getItems();
+            expect(items).toHaveLength(2);
+            expect(items[0]).toEqual({ role: "user", content: "coffee 5" });
+            expect(items[1]).toEqual({ role: "user", content: "how much today?" });
+        });
+
+        it("filters out 'Updated ...' confirmations from history", async () => {
+            const { db } = mockDb([
+                { role: "assistant", content: "Updated Wingstop — amount now SGD 37.80" },
+                { role: "user", content: "thanks" },
+            ]);
+            const session = new D1Session(db, 42);
+            const items = await session.getItems();
+            expect(items).toHaveLength(1);
+            expect(items[0]).toEqual({ role: "user", content: "thanks" });
+        });
+
+        it("filters out 'Deleted ...' confirmations from history", async () => {
+            const { db } = mockDb([
+                { role: "assistant", content: "Deleted lunch expense" },
+            ]);
+            const session = new D1Session(db, 42);
+            const items = await session.getItems();
+            expect(items).toHaveLength(0);
+        });
+
+        it("preserves assistant messages containing confirmation words mid-text", async () => {
+            const { db } = mockDb([
+                { role: "assistant", content: "You spent SGD 50 today. Logged expenses include food and transport." },
+            ]);
+            const session = new D1Session(db, 42);
+            const items = await session.getItems();
+            expect(items).toHaveLength(1);
+        });
     });
 
     describe("addItems", () => {
@@ -153,6 +195,45 @@ describe("D1Session", () => {
             expect(bind).toHaveBeenCalledTimes(2);
             expect(bind).toHaveBeenNthCalledWith(1, 42, "user", "first");
             expect(bind).toHaveBeenNthCalledWith(2, 42, "assistant", "second");
+        });
+
+        it("skips 'Updated ...' assistant confirmations", async () => {
+            const { db, prepare } = mockDb();
+            const session = new D1Session(db, 42);
+            await session.addItems([
+                {
+                    role: "assistant",
+                    status: "completed",
+                    content: [{ type: "output_text", text: "Updated Wingstop — amount now SGD 37.80" }],
+                },
+            ]);
+            expect(prepare).not.toHaveBeenCalledWith(
+                expect.stringContaining("INSERT INTO chat_history")
+            );
+        });
+
+        it("skips 'Deleted ...' assistant confirmations", async () => {
+            const { db, prepare } = mockDb();
+            const session = new D1Session(db, 42);
+            await session.addItems([
+                {
+                    role: "assistant",
+                    status: "completed",
+                    content: [{ type: "output_text", text: "Deleted lunch expense" }],
+                },
+            ]);
+            expect(prepare).not.toHaveBeenCalledWith(
+                expect.stringContaining("INSERT INTO chat_history")
+            );
+        });
+
+        it("does NOT skip user messages starting with confirmation prefixes", async () => {
+            const { db, bind } = mockDb();
+            const session = new D1Session(db, 42);
+            await session.addItems([
+                { role: "user", content: "Logged in to my account" },
+            ]);
+            expect(bind).toHaveBeenCalledWith(42, "user", "Logged in to my account");
         });
     });
 

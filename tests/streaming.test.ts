@@ -174,6 +174,94 @@ describe("StreamingReplyManager", () => {
   });
 });
 
+describe("tool leak sanitization", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("appendText suppresses delta containing tool name 'log_expense'", async () => {
+    const { sendMessageDraft } = await import("../src/telegram/messages");
+    const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const manager = new StreamingReplyManager(createEnv(), 12345);
+
+    await manager.appendText("I'll use log_expense to");
+    // Should not have sent the contaminated buffer
+    expect(sendMessageDraft).not.toHaveBeenCalled();
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining("[TOOL_LEAK]"));
+    consoleSpy.mockRestore();
+  });
+
+  it("appendText suppresses JSON fragment", async () => {
+    const { sendMessageDraft } = await import("../src/telegram/messages");
+    const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const manager = new StreamingReplyManager(createEnv(), 12345);
+
+    await manager.appendText('{"name": "log_expense"');
+    expect(sendMessageDraft).not.toHaveBeenCalled();
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining("[TOOL_LEAK]"));
+    consoleSpy.mockRestore();
+  });
+
+  it("appendText suppresses thinking phrase with tool-like name", async () => {
+    const { sendMessageDraft } = await import("../src/telegram/messages");
+    const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const manager = new StreamingReplyManager(createEnv(), 12345);
+
+    await manager.appendText("I'll call log_expense to save this");
+    expect(sendMessageDraft).not.toHaveBeenCalled();
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining("[TOOL_LEAK]"));
+    consoleSpy.mockRestore();
+  });
+
+  it("appendText preserves normal text", async () => {
+    const { sendMessageDraft } = await import("../src/telegram/messages");
+    const manager = new StreamingReplyManager(createEnv(), 12345);
+
+    await manager.appendText("Logged SGD 5.00 — Coffee");
+    expect(sendMessageDraft).toHaveBeenCalledTimes(1);
+  });
+
+  it("finalize strips tool names from final text", async () => {
+    const { sendTelegramChatMessage } = await import("../src/telegram/messages");
+    const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const manager = new StreamingReplyManager(createEnv(), 12345);
+
+    await manager.finalize("I used log_expense to save your expense");
+    const sentText = vi.mocked(sendTelegramChatMessage).mock.calls[0][2];
+    expect(sentText).not.toContain("log_expense");
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining("[TOOL_LEAK]"));
+    consoleSpy.mockRestore();
+  });
+
+  it("finalize strips thinking patterns from final text", async () => {
+    const { sendTelegramChatMessage } = await import("../src/telegram/messages");
+    const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const manager = new StreamingReplyManager(createEnv(), 12345);
+
+    await manager.finalize("I'll call log_expense to save your coffee");
+    const sentText = vi.mocked(sendTelegramChatMessage).mock.calls[0][2];
+    expect(sentText).not.toContain("I'll call");
+    expect(sentText).not.toContain("log_expense");
+    consoleSpy.mockRestore();
+  });
+
+  it("finalize uses fallback when stripping leaves empty text", async () => {
+    const { sendTelegramChatMessage } = await import("../src/telegram/messages");
+    const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const manager = new StreamingReplyManager(createEnv(), 12345);
+
+    await manager.finalize("log_expense");
+    const sentText = vi.mocked(sendTelegramChatMessage).mock.calls[0][2];
+    expect(sentText).toBe("Something went wrong — try again");
+    consoleSpy.mockRestore();
+  });
+});
+
 describe("getToolStatusText", () => {
   it("returns specific text for known tools", () => {
     expect(getToolStatusText("log_expense")).toBe("Logging your expense...");
